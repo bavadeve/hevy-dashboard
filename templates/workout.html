@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HEVY // WORKOUT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #080b0e;
+            --surface: #0d1117;
+            --border: #1a2233;
+            --green: #00ff87;
+            --blue: #4da6ff;
+            --orange: #ff9500;
+            --red: #ff3b3b;
+            --text: #e2e8f0;
+            --muted: #4a5568;
+            --label: #8899aa;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+                    rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px);
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 20px 32px 16px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg);
+            z-index: 100;
+        }
+
+        .back-btn {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 2px;
+            color: var(--muted);
+            text-decoration: none;
+            border: 1px solid var(--border);
+            padding: 7px 14px;
+            transition: all 0.15s;
+            text-transform: uppercase;
+        }
+
+        .back-btn:hover {
+            border-color: var(--green);
+            color: var(--green);
+        }
+
+        h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 32px;
+            letter-spacing: 4px;
+            color: var(--green);
+            text-shadow: 0 0 20px rgba(0, 255, 135, 0.3);
+            line-height: 1;
+        }
+
+        .header-meta {
+            margin-left: auto;
+            text-align: right;
+            color: var(--label);
+            font-size: 11px;
+            letter-spacing: 1px;
+            line-height: 1.8;
+        }
+
+        /* Summary bar */
+        .summary-bar {
+            display: flex;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sum-stat {
+            padding: 16px 32px;
+            border-right: 1px solid var(--border);
+        }
+
+        .sum-stat:last-child {
+            border-right: none;
+        }
+
+        .sum-value {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 32px;
+            color: var(--green);
+            line-height: 1;
+        }
+
+        .sum-label {
+            font-size: 9px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            margin-top: 3px;
+        }
+
+        /* Exercise cards */
+        .exercises {
+            padding: 24px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-width: 1100px;
+        }
+
+        .ex-card {
+            border: 1px solid var(--border);
+            background: var(--surface);
+            animation: fadeUp 0.3s ease both;
+        }
+
+        .ex-header {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            padding: 14px 20px 12px;
+            border-bottom: 1px solid var(--border);
+            flex-wrap: wrap;
+        }
+
+        .ex-name {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 20px;
+            letter-spacing: 2px;
+            color: var(--text);
+        }
+
+        .muscle-tag {
+            font-size: 9px;
+            letter-spacing: 2px;
+            padding: 3px 8px;
+            border: 1px solid var(--blue);
+            color: var(--blue);
+            text-transform: uppercase;
+        }
+
+        .ex-vol {
+            margin-left: auto;
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 1px;
+        }
+
+        .ex-notes {
+            padding: 8px 20px;
+            font-size: 11px;
+            color: var(--label);
+            border-bottom: 1px solid var(--border);
+            font-style: italic;
+        }
+
+        /* Sets table */
+        .sets-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .sets-table th {
+            font-size: 9px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--muted);
+            padding: 8px 20px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+            font-weight: 400;
+        }
+
+        .sets-table td {
+            padding: 9px 20px;
+            border-bottom: 1px solid rgba(26, 34, 51, 0.5);
+            font-size: 13px;
+        }
+
+        .sets-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .sets-table tr:hover td {
+            background: rgba(0, 255, 135, 0.02);
+        }
+
+        .set-num {
+            color: var(--muted);
+            width: 36px;
+        }
+
+        .set-wt {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .set-reps {
+            color: var(--text);
+        }
+
+        .set-vol {
+            color: var(--label);
+        }
+
+        .set-e1rm {
+            color: var(--blue);
+        }
+
+        .set-rpe {
+            color: var(--orange);
+        }
+
+        .type-warmup {
+            color: var(--orange);
+            font-size: 9px;
+            letter-spacing: 1px;
+        }
+
+        .type-failure {
+            color: var(--red);
+            font-size: 9px;
+            letter-spacing: 1px;
+        }
+
+        .type-dropset {
+            color: var(--blue);
+            font-size: 9px;
+            letter-spacing: 1px;
+        }
+
+        /* Best set highlight */
+        .best-set td {
+            background: rgba(0, 255, 135, 0.04) !important;
+        }
+
+        .best-set .set-wt {
+            color: var(--green);
+        }
+
+        /* Loading / error */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 60vh;
+            flex-direction: column;
+            gap: 16px;
+            color: var(--muted);
+            font-size: 11px;
+            letter-spacing: 2px;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg)
+            }
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(8px)
+            }
+
+            to {
+                opacity: 1;
+                transform: none
+            }
+        }
+
+        .pr-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            padding: 2px 7px;
+            margin-left: 6px;
+            vertical-align: middle;
+            border-radius: 2px;
+            background: linear-gradient(135deg, #b8860b, #ffd700, #b8860b);
+            color: #1a0f00;
+            box-shadow: 0 0 8px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .pr-badge::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 60%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: prShine 3s ease infinite;
+        }
+
+        @keyframes prShine {
+            0% {
+                left: -100%
+            }
+
+            30% {
+                left: 150%
+            }
+
+            100% {
+                left: 150%
+            }
+        }
+
+        .pr-badge-wt {}
+
+        /* both use same gold style */
+        .pr-badge-e1rm {
+            background: linear-gradient(135deg, #7b5ea7, #c9a0ff, #7b5ea7);
+            color: #1a0010;
+            box-shadow: 0 0 8px rgba(191, 92, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        .pr-badge-vol {
+            background: linear-gradient(135deg, #7a4a1e, #cd7f32, #7a4a1e);
+            color: #1a0800;
+            box-shadow: 0 0 8px rgba(205, 127, 50, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        css.session-heatmap {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            margin-top: 24px;
+        }
+
+        .session-heatmap svg {
+            width: 100%;
+            max-width: 160px;
+        }
+
+        .heatmap-legend-small {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 11px;
+            min-width: 140px;
+        }
+
+        .muscle-tooltip-wk {
+            position: fixed;
+            background: #0d1117;
+            border: 1px solid #00ff87;
+            padding: 8px 12px;
+            font-size: 11px;
+            color: #e2e8f0;
+            pointer-events: none;
+            z-index: 9998;
+            display: none;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <header class="header">
+        <a class="back-btn" href="/">← Back</a>
+        <h1 id="pageTitle">WORKOUT</h1>
+        <div class="header-meta" id="headerMeta"></div>
+    </header>
+
+    <div id="app">
+        <div class="loading">
+            <div class="spinner"></div>LOADING WORKOUT...
+        </div>
+    </div>
+
+    <script>
+        const DATE = "{{ date }}";
+
+
+
+        async function load() {
+            try {
+                const params = window.location.search;   // preserves ?range=week
+                const res = await fetch(`/api/workout/${DATE}${params}`); const data = await res.json();
+                if (data.error) throw new Error(data.error);
+                render(data);
+            } catch (e) {
+                document.getElementById('app').innerHTML =
+                    `<div class="loading" style="color:var(--red)">ERROR: ${e.message}</div>`;
+            }
+        }
+
+        function fmt(date) {
+            return new Date(date).toLocaleDateString('en-GB', {
+                weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+            });
+        }
+
+        function fmtTime(iso) {
+            if (!iso) return '—';
+            return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function setTypeBadge(type) {
+            if (type === 'warmup') return '<span class="type-warmup">WARMUP</span>';
+            if (type === 'failure') return '<span class="type-failure">FAILURE</span>';
+            if (type === 'drop_set' || type === 'dropset') return '<span class="type-dropset">DROP</span>';
+            return '';
+        }
+
+        function render(data) {
+            const workouts = data.workouts;
+
+            // Header — use first workout's date for display
+            const firstDate = workouts[0].start_time;
+            document.getElementById('pageTitle').textContent =
+                workouts.length === 1 ? workouts[0].title.toUpperCase() : `${workouts.length} WORKOUTS`;
+            document.getElementById('headerMeta').innerHTML = fmt(firstDate);
+
+            let html = '';
+
+            workouts.forEach((w, wi) => {
+                const totalSets = w.exercises.reduce((a, ex) => a + ex.sets.length, 0);
+                const volDisplay = w.total_volume >= 1000
+                    ? `${(w.total_volume / 1000).toFixed(2)}t`
+                    : `${w.total_volume}kg`;
+
+                // Show a per-workout title bar when there are multiple
+                if (workouts.length > 1) {
+                    html += `
+        <div style="padding:14px 32px 0;font-family:'Bebas Neue',sans-serif;font-size:22px;
+                    letter-spacing:3px;color:var(--green);border-top:${wi > 0 ? '1px solid var(--border)' : 'none'}">
+          ${w.title.toUpperCase()}
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;
+                       color:var(--muted);letter-spacing:1px;margin-left:12px">
+            ${fmtTime(w.start_time)} – ${fmtTime(w.end_time)}
+          </span>
+        </div>`;
+                }
+
+                html += `
+      <div class="summary-bar">
+        <div class="sum-stat">
+          <div class="sum-value">${w.duration_min ?? '—'}</div>
+          <div class="sum-label">Minutes</div>
+        </div>
+        <div class="sum-stat">
+          <div class="sum-value">${w.exercises.length}</div>
+          <div class="sum-label">Exercises</div>
+        </div>
+        <div class="sum-stat">
+          <div class="sum-value">${totalSets}</div>
+          <div class="sum-label">Sets</div>
+        </div>
+        <div class="sum-stat">
+          <div class="sum-value">${volDisplay}</div>
+          <div class="sum-label">Volume</div>
+        </div>
+      </div>
+      <div class="exercises">`;
+
+                w.exercises.forEach((ex, ei) => {
+                    const workSets = ex.sets.filter(s => s.type === 'normal');
+                    const bestE1rm = Math.max(...workSets.map(s => s.e1rm), 0);
+                    const bestIdx = ex.sets.findIndex(s => s.e1rm === bestE1rm && s.type === 'normal');
+
+                    html += `
+        <div class="ex-card" style="animation-delay:${(wi * 10 + ei) * 0.04}s">
+          <div class="ex-header">
+            <span class="ex-name">${ex.name}</span>
+            ${ex.muscle ? `<span class="muscle-tag">${ex.muscle}</span>` : ''}
+            <span class="ex-vol">${ex.volume > 0 ? ex.volume.toLocaleString() + ' kg total' : ''}</span>
+          </div>
+          ${ex.notes ? `<div class="ex-notes">"${ex.notes}"</div>` : ''}
+          <table class="sets-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Weight</th><th>Reps</th>
+                <th>Volume</th><th>e1RM</th><th>RPE</th><th>Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ex.sets.map((s, si) => `
+                <tr class="${si === bestIdx ? 'best-set' : ''}">
+                  <td class="set-num">${si + 1}</td>
+                  <td class="set-wt">
+                    ${s.weight_kg > 0 ? s.weight_kg + ' kg' : 'BW'}
+                    ${s.pr_weight ? '<span class="pr-badge pr-badge-wt">PR WT</span>' : ''}
+                  </td>
+                  <td class="set-reps">${s.reps}</td>
+                  <td class="set-vol">
+                    ${s.volume > 0 ? s.volume + ' kg' : '—'}
+                    ${s.pr_vol ? '<span class="pr-badge pr-badge-vol">PR VOL</span>' : ''}
+                  </td>
+                  <td class="set-e1rm">
+                    ${s.e1rm > 0 ? s.e1rm + ' kg' : '—'}
+                    ${s.pr_e1rm ? '<span class="pr-badge pr-badge-e1rm">PR 1RM</span>' : ''}
+                  </td>                  
+                  <td class="set-rpe">${s.rpe != null ? s.rpe : '—'}</td>
+                  <td>${setTypeBadge(s.type)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+                });
+
+                html += `</div>`; // .exercises
+            });
+
+            document.getElementById('app').innerHTML = html;
+            renderSessionHeatmap(data.workouts, data.secondary_weights);
+        }
+
+        const FRONT_MAP = {
+            'st5': 'shoulders',
+            'st6': 'abdominals',
+            'st10': 'biceps',
+            'st11': 'chest',
+            'st-forearms': 'forearms',
+            'st12': 'quadriceps',   // adductors — closest match
+            'st14': 'quadriceps',
+            'st15': 'calves',
+        };
+
+        const BACK_MAP = {
+            'st5': 'shoulders',    // rear delts
+            'st6': 'traps',   // obliques
+            'st9': 'lats',
+            'st10': 'triceps',
+            'st12': 'hamstrings',
+            'st15': 'calves',
+            'st4': 'glutes',
+            'st-forearms': 'forearms',
+            'st-rhomboids': 'rhomboids',
+        };
+
+        // Non-muscle structural classes — render as dark body color
+        const BODY_CLASSES = ['st2', 'st3', 'st7', 'st8', 'st0', 'st1'];
+
+        // Normalise raw Hevy muscle key → display name (same as backend MUSCLE_NORMALISE)
+        const MUSCLE_NORMALISE = {
+            'chest': 'Chest', 'upper_chest': 'Chest', 'lower_chest': 'Chest',
+            'quadriceps': 'Legs', 'hamstrings': 'Legs', 'glutes': 'Legs',
+            'adductors': 'Legs', 'abductors': 'Legs', 'hip_flexors': 'Legs',
+            'calves': 'Calves', 'lats': 'Back', 'upper_back': 'Traps',
+            'lower_back': 'Back', 'traps': 'Traps', 'rhomboids': 'Traps',
+            'shoulders': 'Shoulders', 'front_delts': 'Shoulders',
+            'side_delts': 'Shoulders', 'rear_delts': 'Shoulders',
+            'biceps': 'Biceps', 'triceps': 'Triceps', 'forearms': 'Forearms',
+            'abs': 'Core', 'obliques': 'Core', 'core': 'Core',
+        };
+
+        function renderSessionHeatmap(workouts, secondaryWeights) {
+            // Aggregate volume per muscle across all exercises in all workouts
+            const volMap = {};
+            workouts.forEach(w => {
+                w.exercises.forEach(ex => {
+                    const key = ex.muscle_raw;
+                    if (!key || key === 'other') return;
+                    const exVol = ex.sets
+                        .filter(s => s.type === 'normal')
+                        .reduce((a, s) => a + s.volume, 0);
+
+                    // Primary — full volume
+                    volMap[key] = (volMap[key] || 0) + exVol;
+                    if (key === 'upper_back') {
+                        volMap['traps'] = (volMap['traps'] || 0) + exVol;
+                        volMap['rhomboids'] = (volMap['rhomboids'] || 0) + exVol;
+                    }
+
+                    // Secondaries — 50% volume
+                    (ex.secondary_raws || []).forEach(sec => {
+                        if (!sec || sec === 'other') return;
+                        const w = secondaryWeights[`${ex.template_id}|${sec}`] ?? 0.5;
+                        volMap[sec] = (volMap[sec] || 0) + exVol * w;
+                        if (sec === 'upper_back') {
+                            volMap['traps'] = (volMap['traps'] || 0) + exVol * w;
+                            volMap['rhomboids'] = (volMap['rhomboids'] || 0) + exVol * w;
+                        }
+                    });
+                });
+            });
+
+            if (!Object.keys(volMap).length) return;
+
+            const maxVol = Math.max(...Object.values(volMap), 1);
+
+            function heatColor(key) {
+                const vol = volMap[key] || 0;
+                const t = Math.pow(vol / maxVol, 0.5);
+                if (t === 0) return '#1a2233';
+                const r = Math.round(26 + t * (0 - 26));
+                const g = Math.round(34 + t * (255 - 34));
+                const b = Math.round(51 + t * (135 - 51));
+                return `rgb(${r},${g},${b})`;
+            }
+
+            function heatOpacity(key) {
+                return Math.max(0.2, Math.pow((volMap[key] || 0) / maxVol, 0.5));
+            }
+
+            function fmtVol(key) {
+                const v = volMap[key] || 0;
+                return v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`;
+            }
+
+            function applyHeat(svg, classMap) {
+                const muscleElements = {};
+                Object.entries(classMap).forEach(([cls, key]) => {
+                    svg.querySelectorAll(`.${cls}`).forEach(el => {
+                        el.style.fill = heatColor(key);
+                        el.style.opacity = heatOpacity(key);
+                        el.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
+                        el.setAttribute('data-muscle', key);
+                        el.setAttribute('data-vol', fmtVol(key));
+                        if (!muscleElements[key]) muscleElements[key] = [];
+                        muscleElements[key].push(el);
+                    });
+                });
+
+                // Coordinated hover
+                Object.entries(muscleElements).forEach(([key, els]) => {
+                    function getCenter() {
+                        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                        els.forEach(el => {
+                            try {
+                                const b = el.getBBox(); minX = Math.min(minX, b.x); minY = Math.min(minY, b.y);
+                                maxX = Math.max(maxX, b.x + b.width); maxY = Math.max(maxY, b.y + b.height);
+                            } catch (_) { }
+                        });
+                        return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+                    }
+                    els.forEach(el => {
+                        el.addEventListener('mouseenter', e => {
+                            const { cx, cy } = getCenter();
+                            els.forEach(e2 => { e2.style.transformOrigin = `${cx}px ${cy}px`; e2.style.transform = 'scale(1.08)'; e2.style.opacity = '1'; });
+                            const t = document.getElementById('wkTooltip');
+                            t.innerHTML = `<span style="color:#00ff87">${key}</span> · ${fmtVol(key)}`;
+                            t.style.display = 'block';
+                            const pw = t.offsetWidth;
+                            t.style.left = (e.clientX + 12 + pw > window.innerWidth) ? (e.pageX - pw - 12) + 'px' : (e.pageX + 12) + 'px';
+                            t.style.top = (e.pageY - 10) + 'px';
+                        });
+                        el.addEventListener('mouseleave', () => {
+                            els.forEach(e2 => { e2.style.transform = 'scale(1)'; e2.style.opacity = heatOpacity(key); });
+                            document.getElementById('wkTooltip').style.display = 'none';
+                        });
+                    });
+                });
+
+                BODY_CLASSES.forEach(cls => {
+                    svg.querySelectorAll(`.${cls}`).forEach(el => {
+                        el.style.fill = '#1a2233'; el.style.opacity = '1'; el.removeAttribute('data-muscle');
+                    });
+                });
+                svg.querySelectorAll('path,ellipse,rect,circle').forEach(el => {
+                    el.style.stroke = '#0d1117'; el.style.strokeWidth = '1.5px';
+                });
+                svg.querySelectorAll('.st13').forEach(el => el.remove());
+            }
+
+            fetch('/static/muscles.svg')
+                .then(r => r.text())
+                .then(svgText => {
+                    const parser = new DOMParser();
+                    const frontDoc = parser.parseFromString(svgText, 'image/svg+xml');
+                    const backDoc = parser.parseFromString(svgText, 'image/svg+xml');
+                    const frontSvg = frontDoc.querySelector('svg');
+                    const backSvg = backDoc.querySelector('svg');
+
+                    const fg = frontSvg.querySelectorAll('svg > g');
+                    const bg = backSvg.querySelectorAll('svg > g');
+                    if (fg.length >= 2) fg[0].remove();
+                    if (bg.length >= 2) bg[1].remove();
+
+                    frontSvg.setAttribute('viewBox', '0 0 507 1028');
+                    backSvg.setAttribute('viewBox', '508 0 507 1028');
+                    frontSvg.style.cssText = 'width:100%;max-width:160px';
+                    backSvg.style.cssText = 'width:100%;max-width:160px';
+
+                    applyHeat(frontSvg, FRONT_MAP);
+                    applyHeat(backSvg, BACK_MAP);
+
+                    // Legend — muscles actually worked this session
+                    const legend = Object.entries(volMap)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([m, v]) => {
+                            const color = heatColor(m);
+                            const fmt = v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`;
+                            return `<div style="display:flex;align-items:center;gap:8px">
+                                <div style="width:10px;height:10px;background:${color};flex-shrink:0;border-radius:2px"></div>
+                                <span style="color:#8899aa">${m}</span>
+                                <span style="color:#e2e8f0;margin-left:auto">${fmt}</span>
+                            </div>`;
+                        }).join('');
+
+                    const frontCol = document.createElement('div');
+                    frontCol.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px';
+                    frontCol.innerHTML = '<span style="font-size:9px;letter-spacing:3px;color:#4a5568">FRONT</span>';
+                    frontCol.appendChild(document.adoptNode(frontSvg));
+
+                    const backCol = document.createElement('div');
+                    backCol.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:6px';
+                    backCol.innerHTML = '<span style="font-size:9px;letter-spacing:3px;color:#4a5568">BACK</span>';
+                    backCol.appendChild(document.adoptNode(backSvg));
+
+                    const legendCol = document.createElement('div');
+                    legendCol.className = 'heatmap-legend-small';
+                    legendCol.innerHTML = `<div style="font-size:9px;letter-spacing:3px;color:#4a5568;margin-bottom:4px">SESSION VOLUME</div>${legend}`;
+
+                    const container = document.createElement('div');
+                    container.className = 'session-heatmap';
+                    container.appendChild(frontCol);
+                    container.appendChild(backCol);
+                    container.appendChild(legendCol);
+
+                    // Insert before the exercises list
+                    const app = document.getElementById('app');
+                    const exerciseDivs = Array.from(app.querySelectorAll('.exercises'));
+                    if (exerciseDivs.length > 0) {
+                        // Grab the anchor point BEFORE moving anything
+                        const firstEx = exerciseDivs[0];
+                        const parent = firstEx.parentElement;
+                        const nextSibling = firstEx.nextSibling;
+
+                        const wrapper = document.createElement('div');
+                        wrapper.style.cssText = 'display:flex;gap:0;align-items:flex-start';
+
+                        const exercisesCol = document.createElement('div');
+                        exercisesCol.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:16px';
+                        exerciseDivs.forEach(d => exercisesCol.appendChild(d));
+
+                        container.style.cssText = 'flex-shrink:0;padding:24px 24px 0 24px;position;top:80px';
+
+                        wrapper.appendChild(exercisesCol);
+                        wrapper.appendChild(container);
+
+                        // Insert wrapper exactly where the exercises used to be
+                        parent.insertBefore(wrapper, nextSibling);
+                    } else {
+                        app.appendChild(container);
+                    }
+                })
+                .catch(() => { });
+        }
+
+        load();
+    </script>
+
+    <div class="muscle-tooltip-wk" id="wkTooltip"></div>
+
+</body>
+
+</html>
