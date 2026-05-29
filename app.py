@@ -28,6 +28,16 @@ from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 
+from hevy_db import (
+    init_db,
+    get_db,
+    insert_workouts,
+    insert_templates,
+    get_latest_workout_time,
+    save_payload,
+    load_payload,
+)
+
 
 class NumpyEncoder(json.JSONEncoder):
     """Converts numpy scalar types to native Python so Flask can serialise them."""
@@ -59,11 +69,6 @@ API_KEY = os.environ.get("HEVY_API_KEY", "").strip()
 BASE_URL = "https://api.hevyapp.com/v1"
 PAGE_SIZE = 10
 TOP_N = 8
-CACHE_DIR = Path(__file__).parent / "cache"
-CACHE_DIR.mkdir(exist_ok=True)
-CACHE_FILE = CACHE_DIR / "cache.json"
-PAYLOAD_CACHE_FILE = CACHE_DIR / "payload_cache.json"
-CACHE_MAX_AGE_HOURS = 24
 
 STALE_DAYS = 21
 DELOAD_THRESHOLD = 0.90
@@ -228,27 +233,7 @@ SECONDARY_WEIGHTS = {
 app = Flask(__name__)
 app.json_provider_class = NumpyJSONProvider
 app.json = NumpyJSONProvider(app)
-
-# ── Cache ──────────────────────────────────────────────────────────────────────
-
-
-def cache_is_valid() -> bool:
-    if not CACHE_FILE.exists():
-        return False
-    age_hours = (time.time() - CACHE_FILE.stat().st_mtime) / 3600
-    return age_hours < CACHE_MAX_AGE_HOURS
-
-
-def load_cache() -> dict:
-    with open(CACHE_FILE) as f:
-        return json.load(f)
-
-
-def save_cache(data: dict):
-    with open(CACHE_FILE, "w") as f:
-        json.dump(data, f)
-    print(f"  ✓ Cache saved → {CACHE_FILE}")
-
+init_db()
 
 # ── Hevy API ───────────────────────────────────────────────────────────────────
 
@@ -314,42 +299,68 @@ def fetch_templates(template_ids: set) -> dict:
 
 
 def fetch_fresh_data() -> dict:
-    existing = load_cache() if CACHE_FILE.exists() else {}
-    existing_workouts = existing.get("workouts", [])
-    existing_templates = existing.get("templates", {})
+    conn = get_db()
+    known_ids = {
+        r[0] for r in conn.execute("SELECT hevy_id FROM workouts").fetchall()
+    }
+    existing_template_ids = {
+        r[0]
+        for r in conn.execute("SELECT template_id FROM templates").fetchall()
+    }
 
-    known_ids = {w.get("id") for w in existing_workouts}
     new_workouts = fetch_new_workouts(known_ids)
-    workouts = new_workouts + existing_workouts
 
     new_template_ids = {
         ex.get("exercise_template_id", "")
         for w in new_workouts
         for ex in w.get("exercises", [])
-    } - existing_templates.keys()
+    } - existing_template_ids
+
     new_templates = (
         fetch_templates(new_template_ids) if new_template_ids else {}
     )
     if not new_template_ids:
         print("  No new exercise templates to fetch.")
-    templates = {**existing_templates, **new_templates}
 
-    payload = {
-        "workouts": workouts,
-        "templates": templates,
-        "fetched_at": datetime.now().isoformat(),
-    }
-    save_cache(payload)
-    PAYLOAD_CACHE_FILE.unlink(missing_ok=True)
-    return payload
+    if new_workouts:
+        insert_workouts(conn, new_workouts)
+    if new_templates:
+        insert_templates(conn, new_templates)
+
+    conn.execute(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+        ("fetched_at", datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+    return get_data()
 
 
 def get_data() -> dict:
-    if cache_is_valid():
-        print("  Using cached data (skip API).")
-        return load_cache()
-    print("  Cache miss — fetching from Hevy API...")
-    return fetch_fresh_data()
+    conn = get_db()
+    workouts_raw = [
+        json.loads(r[0])
+        for r in conn.execute(
+            "SELECT raw_data FROM workouts ORDER BY start_time DESC"
+        ).fetchall()
+    ]
+    templates_raw = {
+        r[0]: json.loads(r[1])
+        for r in conn.execute(
+            "SELECT template_id, raw_data FROM templates"
+        ).fetchall()
+    }
+    fetched_at = conn.execute(
+        "SELECT value FROM meta WHERE key = 'fetched_at'"
+    ).fetchone()
+    conn.close()
+
+    return {
+        "workouts": workouts_raw,
+        "templates": templates_raw,
+        "fetched_at": fetched_at[0] if fetched_at else "",
+    }
 
 
 def build_exercise_data(raw: dict, df: pd.DataFrame, name: str) -> dict | None:
@@ -1220,16 +1231,13 @@ def index():
 @app.route("/api/data")
 def api_data():
     try:
-        raw = get_data()
-        if (
-            PAYLOAD_CACHE_FILE.exists()
-            and PAYLOAD_CACHE_FILE.stat().st_mtime >= CACHE_FILE.stat().st_mtime
-        ):
-            with open(PAYLOAD_CACHE_FILE) as f:
-                return f.read(), 200, {"Content-Type": "application/json"}
-        payload = build_api_payload(raw)
-        with open(PAYLOAD_CACHE_FILE, "w") as f:
-            json.dump(payload, f, cls=NumpyEncoder)
+        conn = get_db()
+        payload = load_payload(conn)
+        if payload is None:
+            payload = build_api_payload(get_data())
+            save_payload(conn, payload)
+            conn.commit()
+        conn.close()
         return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1237,12 +1245,13 @@ def api_data():
 
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
-    """Re-fetch workouts and any new exercise templates from Hevy."""
     try:
         raw = fetch_fresh_data()
         payload = build_api_payload(raw)
-        with open(PAYLOAD_CACHE_FILE, "w") as f:
-            json.dump(payload, f, cls=NumpyEncoder)
+        conn = get_db()
+        save_payload(conn, payload)
+        conn.commit()
+        conn.close()
         return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1250,16 +1259,24 @@ def api_refresh():
 
 @app.route("/api/cache-info")
 def cache_info():
-    if not CACHE_FILE.exists():
+    conn = get_db()
+    fetched_at = conn.execute(
+        "SELECT value FROM meta WHERE key = 'fetched_at'"
+    ).fetchone()
+    n_workouts = conn.execute("SELECT COUNT(*) FROM workouts").fetchone()[0]
+    conn.close()
+
+    if not fetched_at:
         return jsonify({"exists": False})
-    age_h = (time.time() - CACHE_FILE.stat().st_mtime) / 3600
-    raw = load_cache()
+
+    fetched_dt = datetime.fromisoformat(fetched_at[0])
+    age_h = round((datetime.now() - fetched_dt).total_seconds() / 3600, 1)
     return jsonify(
         {
             "exists": True,
-            "age_hours": round(age_h, 1),
-            "fetched_at": raw.get("fetched_at", ""),
-            "valid": age_h < CACHE_MAX_AGE_HOURS,
+            "age_hours": age_h,
+            "fetched_at": fetched_at[0],
+            "workouts": n_workouts,
         }
     )
 
@@ -1304,14 +1321,14 @@ def api_workout(date):
         workouts = raw.get("workouts", [])
 
         # ── Pass 1: build all-time PRs chronologically ─────────────────────────
-        if (
-            PAYLOAD_CACHE_FILE.exists()
-            and PAYLOAD_CACHE_FILE.stat().st_mtime >= CACHE_FILE.stat().st_mtime
-        ):
-            with open(PAYLOAD_CACHE_FILE) as f:
-                pr_index = json.load(f).get("pr_index", {})
-        else:
-            pr_index = build_pr_index(workouts)
+        conn = get_db()
+        payload_cached = load_payload(conn)
+        conn.close()
+        pr_index = (
+            payload_cached.get("pr_index", {})
+            if payload_cached
+            else build_pr_index(workouts)
+        )
 
         pr_weight = pr_index.get("weight", {})
         pr_e1rm = pr_index.get("e1rm", {})
@@ -1487,13 +1504,10 @@ def exercise_detail(name):
 @app.route("/api/exercise/<path:name>")
 def api_exercise(name):
     try:
-        if (
-            PAYLOAD_CACHE_FILE.exists()
-            and PAYLOAD_CACHE_FILE.stat().st_mtime >= CACHE_FILE.stat().st_mtime
-        ):
-            with open(PAYLOAD_CACHE_FILE) as f:
-                payload = json.load(f)
-        else:
+        conn = get_db()
+        payload = load_payload(conn)
+        conn.close()
+        if payload is None:
             payload = build_api_payload(get_data())
         detail = payload.get("exercises_detail", {}).get(name)
         if not detail:
