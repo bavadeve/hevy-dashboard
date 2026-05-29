@@ -1,0 +1,71 @@
+:root {
+    --bg: #080b0e;
+    --surface: #0d1117;
+    --border: #1a2233;
+    --green: #00ff87;
+    --green-dim: #00c96a;
+    --blue: #4da6ff;
+    --orange: #ff9500;
+    --red: #ff3b3b;
+    --text: #e2e8f0;
+    --muted: #4a5568;
+    --label: #8899aa;
+}
+
+html.light {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --border: #dde1e8;
+    --green: #00a855;
+    --green-dim: #007a3d;
+    --blue: #1a6fd4;
+    --orange: #c47000;
+    --red: #cc2222;
+    --text: #1a1f2e;
+    --muted: #8a92a0;
+    --label: #4a5568;
+}
+
+html.light body::before {
+    display: none;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px);
+    pointer-events: none;
+    z-index: 9999;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg)
+    }
+}

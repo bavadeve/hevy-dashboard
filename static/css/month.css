@@ -1,0 +1,211 @@
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 32px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+}
+
+.back-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.back-btn:hover {
+    border-color: var(--green);
+    color: var(--green);
+}
+
+.header-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    letter-spacing: 4px;
+    color: var(--green);
+    text-shadow: 0 0 20px rgba(0, 255, 135, 0.3);
+    line-height: 1;
+}
+
+.month-nav {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.month-nav:hover {
+    border-color: var(--green);
+    color: var(--green);
+}
+
+/* ── Summary bar ─────────────────────────────────────────────────────────── */
+.summary-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+}
+
+.sum-stat {
+    padding: 16px 32px;
+    border-right: 1px solid var(--border);
+}
+
+.sum-stat:last-child {
+    border-right: none;
+}
+
+.sum-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--green);
+    line-height: 1;
+}
+
+.sum-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 3px;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+#app {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+}
+
+.main-col {
+    border-right: 1px solid var(--border);
+    min-width: 0;
+}
+
+.side-col {
+    padding: 24px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ── Workout list table ───────────────────────────────────────────────────── */
+.workout-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.workout-table th {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 24px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+}
+
+.workout-table td {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.workout-table tr:last-child td {
+    border-bottom: none;
+}
+
+.workout-table tbody tr:hover td {
+    background: rgba(0, 255, 135, 0.03);
+}
+
+.wt-date {
+    color: var(--muted);
+    white-space: nowrap;
+    width: 140px;
+}
+
+.wt-title {
+    color: var(--text);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 15px;
+    letter-spacing: 1px;
+}
+
+.wt-dur {
+    color: var(--label);
+    white-space: nowrap;
+    width: 100px;
+}
+
+.wt-vol {
+    color: var(--green);
+    text-align: right;
+    white-space: nowrap;
+    width: 100px;
+}
+
+/* ── Heatmap sidebar ─────────────────────────────────────────────────────── */
+.heatmap-legend-small {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 10px;
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+.month-tooltip {
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--green);
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text);
+    pointer-events: none;
+    z-index: 9998;
+    display: none;
+    letter-spacing: 1px;
+}
+
+/* ── Loading / error ─────────────────────────────────────────────────────── */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 60vh;
+    flex-direction: column;
+    gap: 16px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+
+@media (max-width: 900px) {
+    #app {
+        grid-template-columns: 1fr;
+    }
+
+    .main-col {
+        border-right: none;
+    }
+
+    .summary-bar {
+        grid-column: 1;
+    }
+}

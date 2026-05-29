@@ -1,0 +1,385 @@
+/* Header */
+.header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 32px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+}
+
+.back-btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-decoration: none;
+    border: 1px solid var(--border);
+    padding: 7px 14px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+}
+
+.back-btn:hover {
+    border-color: var(--green);
+    color: var(--green);
+}
+
+h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    letter-spacing: 4px;
+    color: var(--green);
+    text-shadow: 0 0 20px rgba(0, 255, 135, 0.3);
+    line-height: 1;
+}
+
+.header-meta {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+/* Summary bar */
+.summary-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+}
+
+.sum-stat {
+    padding: 16px 32px;
+    border-right: 1px solid var(--border);
+}
+
+.sum-stat:last-child {
+    border-right: none;
+}
+
+.sum-value {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--green);
+    line-height: 1;
+}
+
+.sum-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 3px;
+}
+
+/* Accordion blocks (multi-workout view) */
+.workout-block-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 32px;
+    cursor: pointer;
+    border-top: 1px solid var(--border);
+    transition: background 0.1s;
+    user-select: none;
+}
+
+.workout-block-header:hover {
+    background: rgba(0, 255, 135, 0.03);
+}
+
+.workout-block:first-child .workout-block-header {
+    border-top: none;
+}
+
+.workout-block-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--green);
+}
+
+.workout-block-time {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+}
+
+.workout-block-chevron {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 11px;
+}
+
+/* Exercise cards */
+.exercises {
+    padding: 24px 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 1100px;
+}
+
+.ex-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    animation: fadeUp 0.3s ease both;
+}
+
+.ex-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+
+.ex-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 2px;
+    color: var(--text);
+}
+
+.ex-name:hover {
+    color: var(--green);
+}
+
+.muscle-tag {
+    font-size: 9px;
+    letter-spacing: 2px;
+    padding: 3px 8px;
+    border: 1px solid var(--blue);
+    color: var(--blue);
+    text-transform: uppercase;
+}
+
+.ex-vol {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+}
+
+.ex-notes {
+    padding: 8px 20px;
+    font-size: 11px;
+    color: var(--label);
+    border-bottom: 1px solid var(--border);
+    font-style: italic;
+}
+
+/* Sets table */
+.sets-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.sets-table th {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 20px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+    overflow: hidden;
+}
+
+.sets-table th:nth-child(1) { width: 5%; }   /* # */
+.sets-table th:nth-child(2) { width: 22%; }  /* Weight */
+.sets-table th:nth-child(3) { width: 10%; }  /* Reps */
+.sets-table th:nth-child(4) { width: 16%; }  /* Volume */
+.sets-table th:nth-child(5) { width: 22%; }  /* e1RM */
+.sets-table th:nth-child(6) { width: 10%; }  /* RPE */
+.sets-table th:nth-child(7) { width: 15%; }  /* Type */
+
+.sets-table td {
+    padding: 9px 20px;
+    border-bottom: 1px solid rgba(26, 34, 51, 0.5);
+    font-size: 13px;
+}
+
+.sets-table tr:last-child td {
+    border-bottom: none;
+}
+
+.sets-table tr:hover td {
+    background: rgba(0, 255, 135, 0.02);
+}
+
+.set-num {
+    color: var(--muted);
+    width: 36px;
+}
+
+.set-wt {
+    color: var(--text);
+    font-weight: 500;
+}
+
+.set-reps {
+    color: var(--text);
+}
+
+.set-vol {
+    color: var(--label);
+}
+
+.set-e1rm {
+    color: var(--blue);
+}
+
+.set-rpe {
+    color: var(--orange);
+}
+
+.type-warmup {
+    color: var(--orange);
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+
+.type-failure {
+    color: var(--red);
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+
+.type-dropset {
+    color: var(--blue);
+    font-size: 9px;
+    letter-spacing: 1px;
+}
+
+/* Best set highlight */
+.best-set td {
+    background: rgba(0, 255, 135, 0.04) !important;
+}
+
+.best-set .set-wt {
+    color: var(--green);
+}
+
+/* Loading / error */
+.loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 60vh;
+    flex-direction: column;
+    gap: 16px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 2px;
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translateY(8px)
+    }
+
+    to {
+        opacity: 1;
+        transform: none
+    }
+}
+
+.pr-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 2px 7px;
+    margin-left: 6px;
+    vertical-align: middle;
+    border-radius: 2px;
+    background: linear-gradient(135deg, #b8860b, #ffd700, #b8860b);
+    color: #1a0f00;
+    box-shadow: 0 0 8px rgba(255, 215, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+    position: relative;
+    overflow: hidden;
+}
+
+.pr-badge::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    animation: prShine 3s ease infinite;
+}
+
+@keyframes prShine {
+    0% {
+        left: -100%
+    }
+
+    30% {
+        left: 150%
+    }
+
+    100% {
+        left: 150%
+    }
+}
+
+.pr-badge-wt {}
+
+/* both use same gold style */
+.pr-badge-e1rm {
+    background: linear-gradient(135deg, #7b5ea7, #c9a0ff, #7b5ea7);
+    color: #1a0010;
+    box-shadow: 0 0 8px rgba(191, 92, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.pr-badge-vol {
+    background: linear-gradient(135deg, #7a4a1e, #cd7f32, #7a4a1e);
+    color: #1a0800;
+    box-shadow: 0 0 8px rgba(205, 127, 50, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+css.session-heatmap {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-top: 24px;
+}
+
+.session-heatmap svg {
+    width: 100%;
+    max-width: 160px;
+}
+
+.heatmap-legend-small {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 11px;
+    min-width: 140px;
+}
+
+.muscle-tooltip-wk {
+    position: fixed;
+    background: var(--surface);
+    border: 1px solid var(--green);
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--text);
+    pointer-events: none;
+    z-index: 9998;
+    display: none;
+    letter-spacing: 1px;
+}

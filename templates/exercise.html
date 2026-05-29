@@ -4,13 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HEVY // WORKOUT</title>
+    <title>HEVY // EXERCISE</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@300;400;500;700&display=swap"
         rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <link rel="stylesheet" href="/static/css/common.css">
-    <link rel="stylesheet" href="/static/css/workout.css">
+    <link rel="stylesheet" href="/static/css/exercise.css">
 
 </head>
 
@@ -18,23 +19,24 @@
 
     <header class="header">
         <a class="back-btn" href="#" onclick="history.back(); return false;">← Back</a>
-        <h1 id="pageTitle">WORKOUT</h1>
-        <div class="header-meta" id="headerMeta"></div>
+        <div class="header-title" id="exTitle">EXERCISE</div>
+        <span class="muscle-tag" id="muscleTag" style="display:none"></span>
         <button id="btnTheme" onclick="toggleTheme()" style="margin-left:auto;background:transparent;border:1px solid var(--border);
-                       color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;
-                       padding:6px 12px;cursor:pointer;transition:all 0.15s">☾</button>
+                color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;
+                padding:6px 12px;cursor:pointer;transition:all 0.15s">☾</button>
     </header>
 
     <div id="app">
         <div class="loading">
-            <div class="spinner"></div>LOADING WORKOUT...
+            <div class="spinner"></div>
+            LOADING EXERCISE...
         </div>
     </div>
 
-    <script>const DATE = "{{ date }}";</script>
-    <script src="/static/js/workout.js"></script>
+    <div class="tooltip" id="tooltip"></div>
 
-    <div class="muscle-tooltip-wk" id="wkTooltip"></div>
+    <script>const NAME = decodeURIComponent("{{ name }}");</script>
+    <script src="/static/js/exercise.js"></script>
 
 </body>
 

@@ -1,0 +1,1407 @@
+// ── Palette ────────────────────────────────────────────────────────────────────
+const PALETTE = ['#00ff87', '#4da6ff', '#ff9500', '#ff3b3b', '#bf5af2', '#32d74b', '#ffd60a', '#ff6961'];
+Chart.defaults.color = '#4a5568';
+Chart.defaults.borderColor = '#1a2233';
+Chart.defaults.font.family = "'JetBrains Mono', monospace";
+Chart.defaults.font.size = 11;
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let data = null;
+let volChart = null;
+let e1rmChart = null;
+let volVisible = {};
+let e1rmVisible = {};
+let predSort = { key: 'days_since', dir: 1 };
+let predQuery = '';
+let activeWindow = null;
+let prMode = 'weight';
+let _volFrontSvg = null, _volBackSvg = null;
+let _freqFrontSvg = null, _freqBackSvg = null;
+
+// ── Window helpers ─────────────────────────────────────────────────────────────
+function getCutoffDate() {
+    if (!activeWindow) return null;
+    const d = new Date();
+    if (activeWindow === '1M') d.setMonth(d.getMonth() - 1);
+    if (activeWindow === '3M') d.setMonth(d.getMonth() - 3);
+    if (activeWindow === '1Y') d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+}
+
+function filterByWindow(dates, values) {
+    const cutoff = getCutoffDate();
+    if (!cutoff) return { dates, values };
+    return dates.reduce((acc, d, i) => {
+        if (d >= cutoff) { acc.dates.push(d); acc.values.push(values[i]); }
+        return acc;
+    }, { dates: [], values: [] });
+}
+
+function setWindow(w) {
+    activeWindow = activeWindow === w ? null : w;
+    document.querySelectorAll('.btn-window').forEach(b => {
+        b.classList.toggle('active', b.dataset.w === activeWindow);
+    });
+    updateSummaryStats();
+    applyWindow();
+}
+
+function updateSummaryStats() {
+    const cutoff = getCutoffDate();
+    const series = data.muscle_series;
+
+    // Recompute stats within the current window from muscle_series vol_dates
+    // Use the first muscle's vol_dates to count workout days — actually use predictions
+    // which have days_since, or recompute from volume data dates
+    const allDates = new Set();
+    Object.values(data.volume).forEach(v => {
+        v.weeks.forEach(w => { if (!cutoff || w >= cutoff) allDates.add(w); });
+    });
+
+    // Count total volume in window
+    let totalVol = 0;
+    Object.values(series).forEach(s => {
+        const { values } = filterByWindow(s.vol_dates, s.vol_values);
+        totalVol += values.reduce((a, b) => a + b, 0);
+    });
+
+    // Count unique exercises used in window
+    const activeExercises = Object.keys(data.volume).filter(ex => {
+        const { values } = filterByWindow(data.volume[ex].weeks, data.volume[ex].values);
+        return values.some(v => v > 0);
+    });
+
+    // Count workout sessions (unique weeks is a proxy — use freq_dates for accuracy)
+    const workoutDates = new Set();
+    Object.values(series).forEach(s => {
+        s.freq_dates.forEach(d => { if (!cutoff || d >= cutoff) workoutDates.add(d); });
+    });
+
+    const volDisplay = totalVol >= 1000
+        ? `${(totalVol / 1000).toFixed(1)}t`
+        : `${Math.round(totalVol)}kg`;
+
+    // Date range label
+    const dateLabel = cutoff
+        ? `${new Date(cutoff).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }).toUpperCase()} – NOW`
+        : data.summary.date_range;
+
+    if (document.querySelector('.stat-value')) {
+        const stats = document.querySelectorAll('.stat-value');
+        const labels = document.querySelectorAll('.stat-label');
+        if (stats[0]) stats[0].textContent = workoutDates.size;
+        if (stats[1]) stats[1].textContent = volDisplay;
+        if (stats[2]) stats[2].textContent = activeExercises.length;
+    }
+}
+
+function applyWindow() {
+    if (!volChart || !e1rmChart) return;
+    updateVolumeChart();
+    updateE1rmChart();
+    rebuildToggles('vol');
+    rebuildToggles('e1rm');
+    renderCalendar();
+    renderTiming();
+    renderMuscleBarsFull();
+    renderBodyHeatmap();
+    renderFreqHeatmap();
+
+}
+
+// ── Fetch ──────────────────────────────────────────────────────────────────────
+async function loadData(endpoint = '/api/data') {
+    const btn = document.getElementById('btnRefresh');
+    btn.disabled = true;
+    try {
+        const res = await fetch(endpoint, { method: endpoint === '/api/refresh' ? 'POST' : 'GET' });
+        data = await res.json();
+        if (data.error) throw new Error(data.error);
+        initVisibility();
+        render();
+        updateCacheInfo();
+    } catch (e) {
+        document.getElementById('app').innerHTML =
+            `<div class="loading" style="color:var(--red)">ERROR: ${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function refresh() {
+    const btn = document.getElementById('btnRefresh');
+    btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">↻</span>';
+    await loadData('/api/refresh');
+    btn.textContent = '↻ Refresh';
+}
+
+async function updateCacheInfo() {
+    try {
+        const r = await fetch('/api/cache-info');
+        const c = await r.json();
+        if (c.exists) {
+            const dt = new Date(c.fetched_at).toLocaleString();
+            document.getElementById('cacheInfo').innerHTML =
+                `CACHE <span>${c.age_hours}h OLD</span> · ${dt}`;
+        }
+    } catch (_) { }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+    const isLight = document.documentElement.classList.toggle('light');
+    const volLegend = document.getElementById('volLegendContainer');
+    const freqLegend = document.getElementById('freqLegendContainer');
+
+    if (volLegend) buildHeatLegend(volLegend, 'VOLUME', volHeatmap.map, volHeatColor, volFmtVal, '#00a855', '#00ff87');
+    if (freqLegend) buildHeatLegend(freqLegend, 'SESSIONS', freqHeatmap.map, freqHeatColor, freqFmtVal, '#1a6fd4', '#4da6ff');
+
+    document.getElementById('btnTheme').textContent = isLight ? '☾' : '☀';
+
+    localStorage.setItem('theme', isLight ? 'light' : 'dark');
+
+    if (volChart) { volChart.destroy(); volChart = null; buildVolumeChart(); }
+    if (e1rmChart) { e1rmChart.destroy(); e1rmChart = null; buildE1rmChart(); }
+    if (volHeatmap.frontSvg) applyHeat(volHeatmap.frontSvg, FRONT_MAP, volHeatColor, volHeatOpacity, volFmtVal);
+    if (volHeatmap.backSvg) applyHeat(volHeatmap.backSvg, BACK_MAP, volHeatColor, volHeatOpacity, volFmtVal);
+    if (freqHeatmap.frontSvg) applyHeat(freqHeatmap.frontSvg, FRONT_MAP, freqHeatColor, freqHeatOpacity, freqFmtVal);
+    if (freqHeatmap.backSvg) applyHeat(freqHeatmap.backSvg, BACK_MAP, freqHeatColor, freqHeatOpacity, freqFmtVal);
+    renderCalendar()
+}
+
+function render() {
+    document.getElementById('app').innerHTML = `
+<div class="stats-bar">
+<div class="stat"><div class="stat-value">${data.summary.workouts}</div><div class="stat-label">Workouts</div></div>
+<div class="stat"><div class="stat-value">${data.summary.volume_t}t</div><div class="stat-label">Total Volume</div></div>
+<div class="stat"><div class="stat-value">${data.summary.exercises}</div><div class="stat-label">Exercises Logged</div></div>
+<div class="stat"><div class="stat-value">${data.summary.streak}</div><div class="stat-label">Week Streak</div></div>
+</div>
+<!-- Calendar heatmap -->
+<div style="padding:24px 28px;border-bottom:1px solid var(--border)">
+<div class="panel-title" style="margin-bottom:16px">Training Calendar</div>
+<div style="overflow-x:auto;overflow-y:hidden;padding-bottom:8px">
+<div id="calendarHeatmap"></div>
+</div>
+</div>    
+<div class="grid">
+<div class="panel full-width">
+<div class="panel-title">Volume Over Time</div>
+<div class="ex-search-wrap">
+<input class="ex-search" id="volSearch" placeholder="+ add exercise..." autocomplete="off"
+        oninput="updateExSearch('vol')" onfocus="openExSearch('vol')" onblur="closeExSearch('vol')">
+<div class="ex-search-dropdown" id="volDropdown"></div>
+</div>
+<div class="ex-toggles" id="volToggles"></div>
+<div class="chart-wrap"><canvas id="volChart"></canvas></div>
+</div>
+
+<div class="panel full-width">
+<div class="panel-title">Estimated 1-Rep Max</div>
+<div class="ex-search-wrap">
+<input class="ex-search" id="e1rmSearch" placeholder="+ add exercise..." autocomplete="off"
+        oninput="updateExSearch('e1rm')" onfocus="openExSearch('e1rm')" onblur="closeExSearch('e1rm')">
+<div class="ex-search-dropdown" id="e1rmDropdown"></div>
+</div>
+<div class="ex-toggles" id="e1rmToggles"></div>
+<div class="chart-wrap"><canvas id="e1rmChart"></canvas></div>
+</div>
+
+<!-- Muscle volume + heatmap -->
+<div class="panel">
+<div class="panel-title">Muscle Volume</div>
+<div class="muscle-bars" id="muscleVol"></div>
+<div style="margin-top:24px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;color:var(--label);margin-bottom:20px">LOAD HEATMAP</div>
+<div class="heatmap-container" id="bodyHeatmap"></div>
+</div>
+
+<!-- Muscle frequency + heatmap -->
+<div class="panel">
+<div class="panel-title">Training Frequency</div>
+<div class="muscle-bars" id="muscleFreq"></div>
+<div style="margin-top:24px;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:3px;color:var(--label);margin-bottom:20px">FREQUENCY HEATMAP</div>
+<div class="heatmap-container" id="freqHeatmap"></div>
+</div>
+
+<div class="panel full-width" id="progressPanel">
+<div class="panel-title" style="display:flex;align-items:center;gap:12px">
+Strength Progress
+<button class="btn-window active" id="progByE1rm" onclick="setProgressMode('e1rm')">E1RM</button>
+<button class="btn-window" id="progByVol" onclick="setProgressMode('volume')">Volume</button>
+</div>
+<div id="progressGrid"></div>
+</div>
+
+<div class="panel full-width">
+<div class="panel-title">Personal Records
+<div style="margin-left:auto;display:flex;gap:2px">
+<button class="btn-window" id="prByWt"   onclick="setPrMode('weight')">Max Weight</button>
+<button class="btn-window" id="prByE1rm" onclick="setPrMode('e1rm')"  >Max e1RM</button>
+<button class="btn-window" id="prByVol"  onclick="setPrMode('vol')"   >Max Vol</button>
+</div>
+</div>
+<div class="pr-grid" id="prs"></div>
+</div>
+
+<div class="panel full-width">
+<div class="panel-title" style="display:flex;align-items:center;gap:12px">
+Next Session
+<label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);cursor:pointer;font-weight:normal">
+    <input type="checkbox" id="deloadToggle" onchange="renderPredictions()" 
+            style="accent-color:var(--red)">
+    ACWR deload
+</label>
+<a href="/export/next-session.json" 
+    style="font-size:9px;letter-spacing:2px;color:var(--muted);text-decoration:none;
+            border:1px solid var(--border);padding:3px 8px;transition:all 0.15s"
+    onmouseover="this.style.color='var(--green)';this.style.borderColor='var(--green)'"
+    onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">
+    ↓ JSON
+</a>
+</div>
+<input class="pred-search" id="predSearch" placeholder="search exercise..."
+    oninput="predQuery=this.value.toLowerCase();renderPredictions()">
+<table>
+<thead><tr>
+<th onclick="sortPreds('exercise')">Exercise</th>
+<th onclick="sortPreds('days_since')">Last Done</th>
+<th onclick="sortPreds('last_weight')">Last Weight</th>
+<th onclick="sortPreds('last_reps')">Last Reps</th>
+<th>→ Target</th>
+<th onclick="sortPreds('best_e1rm')">e1RM</th>
+<th onclick="sortPreds('acwr')">ACWR</th>
+<th>Status</th>
+<th>Note</th>
+</tr></thead>
+<tbody id="predBody"></tbody>
+</table>
+</div>
+</div>`;
+
+    updateSummaryStats();
+    buildVolumeChart();
+    buildE1rmChart();
+    renderCalendar();
+    renderTiming();
+    renderMuscleBarsFull();
+    renderBodyHeatmap();
+    renderFreqHeatmap();
+    renderProgress();
+    renderPRs();
+    setPrMode(prMode);
+    renderPredictions();
+}
+
+// ── Volume chart ───────────────────────────────────────────────────────────────
+function buildVolumeChart() {
+    volChart = new Chart(document.getElementById('volChart'), {
+        type: 'line',
+        data: buildVolChartData(),
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            onClick: (e, elements) => {
+                if (!elements.length) return;
+                const weekDate = volChart.data.labels[elements[0].index];
+                if (weekDate) window.location.href = `/workout/${weekDate}?range=week`;
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: document.documentElement.classList.contains('light') ? '#ffffff' : '#0d1117', borderColor: gridColor(), borderWidth: 1, padding: 10,
+
+                    filter: item => item.parsed.y !== null,
+                    callbacks: {
+                        title: items => `${formatWeekLabel(items[0].label)}  ↗ click to open`,
+                        label: ctx => ctx.parsed.y !== null ? ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)} kg` : null
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: gridColor() }, ticks: {
+                        maxTicksLimit: 14, maxRotation: 30,
+                        callback: function (val, idx) {
+                            const labels = this.chart.data.labels;
+                            const step = Math.max(1, Math.floor(labels.length / 14));
+                            return idx % step === 0 ? formatWeekLabel(labels[idx]) : '';
+                        }
+                    }
+                },
+                y: { grid: { color: gridColor() }, ticks: { callback: v => v >= 1000 ? `${(v / 1000).toFixed(1)}t` : v } }
+            }
+        }
+    });
+    rebuildToggles('vol');
+}
+
+function formatWeekLabel(dateStr) {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+}
+
+function getAllWeeks() {
+    const cutoff = getCutoffDate();
+    const weeks = new Set();
+    Object.keys(volVisible).filter(ex => volVisible[ex]).forEach(ex => {
+        (data.volume[ex]?.weeks || []).forEach(w => { if (!cutoff || w >= cutoff) weeks.add(w); });
+    });
+    return [...weeks].sort();
+}
+
+function buildVolChartData() {
+    const cutoff = getCutoffDate();
+    const allWeeks = getAllWeeks();
+    const datasets = Object.keys(volVisible).filter(ex => volVisible[ex]).map((ex, i) => {
+        const d = data.volume[ex];
+        const weekMap = {};
+        (d?.weeks || []).forEach((w, j) => { if (!cutoff || w >= cutoff) weekMap[w] = d.values[j]; });
+        const origIdx = data.exercises.indexOf(ex);
+        const color = PALETTE[origIdx >= 0 ? origIdx % PALETTE.length : i % PALETTE.length];
+        return {
+            label: ex, data: allWeeks.map(w => weekMap[w] ?? null), borderColor: color,
+            backgroundColor: color + '18', borderWidth: 2, pointRadius: 2, pointHoverRadius: 5, tension: 0.3, spanGaps: false
+        };
+    });
+    return { labels: allWeeks, datasets };
+}
+
+function updateVolumeChart() { volChart.data = buildVolChartData(); volChart.update(); }
+
+// ── e1RM chart ─────────────────────────────────────────────────────────────────
+function gaussianSmooth(points, bandwidth = 21) {
+    return points.map(pi => {
+        let weightedSum = 0, totalWeight = 0;
+        points.forEach(pj => {
+            const days = Math.abs(pi.x - pj.x) / 86400000;
+            const w = Math.exp(-(days * days) / (2 * bandwidth * bandwidth));
+            weightedSum += pj.y * w;
+            totalWeight += w;
+        });
+        return { x: pi.x, y: Math.round((weightedSum / totalWeight) * 10) / 10 };
+    });
+}
+
+function buildE1rmChartData() {
+    const cutoff = getCutoffDate();
+    const datasets = [];
+    Object.keys(e1rmVisible).filter(ex => e1rmVisible[ex]).forEach((ex, i) => {
+        const d = data.e1rm[ex];
+        if (!d) return;
+        const origIdx = data.exercises.indexOf(ex);
+        const color = PALETTE[origIdx >= 0 ? origIdx % PALETTE.length : i % PALETTE.length];
+        const rawPoints = (d.dates || [])
+            .map((dt, j) => ({ dt, v: d.values[j] }))
+            .filter(({ dt }) => !cutoff || dt >= cutoff)
+            .map(({ dt, v }) => ({ x: new Date(dt).getTime(), y: v, label: dt }));
+        if (!rawPoints.length) return;
+        const smoothed = gaussianSmooth(rawPoints);
+        datasets.push({
+            label: ex, type: 'scatter', data: rawPoints,
+            backgroundColor: color + 'aa', borderColor: 'transparent', pointRadius: 4, pointHoverRadius: 7, order: 2
+        });
+        datasets.push({
+            label: ex + ' (trend)', type: 'line', data: smoothed,
+            borderColor: color, backgroundColor: 'transparent', borderWidth: 2,
+            pointRadius: 0, pointHoverRadius: 0, tension: 0.4, spanGaps: true, order: 1
+        });
+    });
+    return { datasets };
+}
+
+function buildE1rmChart() {
+    e1rmChart = new Chart(document.getElementById('e1rmChart'), {
+        type: 'scatter',
+        data: buildE1rmChartData(),
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            onClick: (e, elements) => {
+                const dot = elements.find(el => !e1rmChart.data.datasets[el.datasetIndex].label.endsWith('(trend)'));
+                if (!dot) return;
+                const pt = e1rmChart.data.datasets[dot.datasetIndex].data[dot.index];
+                if (pt.label) window.location.href = `/workout/${pt.label}`;
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: document.documentElement.classList.contains('light') ? '#ffffff' : '#0d1117', borderColor: gridColor(), borderWidth: 1, padding: 10,
+                    callbacks: {
+                        title: items => {
+                            const ds = e1rmChart.data.datasets[items[0].datasetIndex];
+                            if (ds.label.endsWith('(trend)')) return '';
+                            return new Date(items[0].raw.x).toLocaleDateString('en-GB',
+                                { day: 'numeric', month: 'short', year: 'numeric' }) + '  ↗ click to open';
+                        },
+                        label: ctx => ctx.dataset.label.endsWith('(trend)') ? null :
+                            ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} kg`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    type: 'linear', grid: { color: gridColor() }, ticks: {
+                        maxTicksLimit: 14, maxRotation: 30,
+                        callback: v => new Date(v).toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+                    }
+                },
+                y: { grid: { color: gridColor() }, ticks: { callback: v => `${Math.round(v * 10) / 10} kg` } }
+            }
+        }
+    });
+    rebuildToggles('e1rm');
+}
+
+function updateE1rmChart() { e1rmChart.data = buildE1rmChartData(); e1rmChart.update(); }
+
+// ── Exercise visibility + search ───────────────────────────────────────────────
+function initVisibility() {
+    data.exercises.forEach(ex => { volVisible[ex] = true; e1rmVisible[ex] = true; });
+}
+
+function rebuildToggles(chart) {
+    const containerId = chart === 'vol' ? 'volToggles' : 'e1rmToggles';
+    const visible = chart === 'vol' ? volVisible : e1rmVisible;
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+    Object.keys(visible).filter(ex => visible[ex]).forEach(ex => {
+        const i = data.exercises.indexOf(ex);
+        const color = PALETTE[i >= 0 ? i % PALETTE.length : 0];
+        const btn = document.createElement('button');
+        btn.className = 'ex-toggle';
+        btn.textContent = ex + ' ×';
+        btn.style.borderColor = color;
+        btn.style.color = color;
+        btn.title = 'Click to remove';
+        btn.onclick = () => { visible[ex] = false; rebuildToggles(chart); chart === 'vol' ? updateVolumeChart() : updateE1rmChart(); };
+        container.appendChild(btn);
+    });
+}
+
+function scoreExercise(ex, query) {
+    const e = ex.toLowerCase(), q = query.toLowerCase();
+    if (e === q) return 100;
+    if (e.startsWith(q)) return 80;
+    if (e.includes(q)) return 60;
+    if (e.split(/\s+/).some(w => w.startsWith(q))) return 40;
+    return 0;
+}
+
+function openExSearch(chart) { updateExSearch(chart); document.getElementById(chart + 'Dropdown').classList.add('open'); }
+function closeExSearch(chart) {
+    setTimeout(() => {
+        document.getElementById(chart + 'Dropdown').classList.remove('open');
+        document.getElementById(chart + 'Search').value = '';
+    }, 150);
+}
+
+function updateExSearch(chart) {
+    const query = document.getElementById(chart + 'Search').value.trim();
+    const visible = chart === 'vol' ? volVisible : e1rmVisible;
+    const dropdown = document.getElementById(chart + 'Dropdown');
+    const results = Object.keys(data.volume)
+        .map(ex => ({ ex, score: scoreExercise(ex, query) }))
+        .filter(r => query === '' ? !visible[r.ex] : r.score > 0 && !visible[r.ex])
+        .sort((a, b) => b.score - a.score)
+    dropdown.innerHTML = results.length
+        ? results.map(({ ex }) => `<div class="ex-search-option" onmousedown="addExercise('${chart}','${ex.replace(/'/g, "\\'")}')"> ${ex}</div>`).join('')
+        : `< div class="ex-search-option" style="color:var(--muted)" > no results</div > `;
+    dropdown.classList.add('open');
+}
+
+function addExercise(chart, ex) {
+    const visible = chart === 'vol' ? volVisible : e1rmVisible;
+    if (!data.volume[ex]) data.volume[ex] = { weeks: [], values: [] };
+    if (!data.e1rm[ex]) data.e1rm[ex] = { dates: [], values: [] };
+    visible[ex] = true;
+    rebuildToggles(chart);
+    chart === 'vol' ? updateVolumeChart() : updateE1rmChart();
+    document.getElementById(chart + 'Search').value = '';
+    document.getElementById(chart + 'Dropdown').classList.remove('open');
+}
+// ── Calendar heatmap ───────────────────────────────────────────────────────────
+function renderCalendar() {
+    const cutoff = getCutoffDate();
+    const calendar = data.calendar;
+    const container = document.getElementById('calendarHeatmap');
+
+    // Filter to window
+    const entries = Object.entries(calendar)
+        .sort(([a], [b]) => a.localeCompare(b));
+
+    if (!entries.length) {
+        container.innerHTML = '<div style="color:var(--muted);font-size:11px">No data in selected window</div>';
+        return;
+    }
+
+    const maxSets = Math.max(...entries.map(([, v]) => v.sets), 1);
+
+    function cellColor(sets) {
+        const isLight = document.documentElement.classList.contains('light');
+        if (!sets) return isLight ? '#e8edf5' : '#1a2233';
+        const t = Math.pow(sets / maxSets, 0.5);
+        if (isLight) {
+            const r = Math.round(255 + t * (0 - 255));
+            const g = Math.round(255 + t * (168 - 255));
+            const b = Math.round(255 + t * (85 - 255));
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+        const r = Math.round(26 + t * (0 - 26));
+        const g = Math.round(34 + t * (255 - 34));
+        const b = Math.round(51 + t * (135 - 51));
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+
+    // Build a map of date → data for quick lookup
+    const dayMap = {};
+    entries.forEach(([d, v]) => dayMap[d] = v);
+
+    // Determine date range
+    const startDate = new Date(entries[0][0]);
+    const endDate = new Date(entries[entries.length - 1][0]);
+
+    // Extend to full weeks
+    const start = new Date(startDate);
+    start.setDate(start.getDate() - start.getDay());  // back to Sunday
+    const end = new Date(endDate);
+    end.setDate(end.getDate() + (6 - end.getDay()));  // forward to Saturday
+
+    // Build weeks array
+    const weeks = [];
+    const cur = new Date(start);
+    while (cur <= end) {
+        const week = [];
+        for (let d = 0; d < 7; d++) {
+            week.push(new Date(cur));
+            cur.setDate(cur.getDate() + 1);
+        }
+        weeks.push(week);
+    }
+
+    // Month labels
+    const monthLabels = [];
+    let lastMonth = -1;
+    weeks.forEach((week, wi) => {
+        const m = week[0].getMonth();
+        if (m !== lastMonth) {
+            monthLabels.push({ wi, label: week[0].toLocaleDateString('en-GB', { month: 'short' }), date: week[0] });
+            lastMonth = m;
+        }
+    });
+
+    const CELL = 13;
+    const GAP = 3;
+    const LABEL_H = 20;
+    const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+    const totalW = weeks.length * (CELL + GAP);
+    const totalH = LABEL_H + 7 * (CELL + GAP);
+
+    const svgW = totalW + 32;
+    const svgH = totalH + 8;
+    let svg = `<svg width = "100%" viewBox = "0 0 ${totalW + 32} ${totalH + 8}" xmlns = "http://www.w3.org/2000/svg"
+style="font-family:'JetBrains Mono',monospace;overflow:visible" id = "calSvg" > `;
+
+    // Day labels (left)
+    [1, 3, 5].forEach(di => {
+        svg += `< text x = "0" y = "${LABEL_H + di * (CELL + GAP) + CELL / 2 + 4}"
+font - size="9" fill = "#4a5568" dominant - baseline="middle" > ${DAY_LABELS[di]}</text > `;
+    });
+
+    // Month labels (top)
+    monthLabels.forEach(({ wi, label, date }) => {
+        const yr = date.getFullYear();
+        const mo = String(date.getMonth() + 1).padStart(2, '0');
+        svg += `<a href = "/month/${yr}-${mo}">< text x = "${16 + wi * (CELL + GAP)}" y = "12"
+    font - size="9" fill = "var(--green)" text-decoration="underline" style="cursor:pointer" > ${label}</text > </a>`;
+    });
+
+    // Cells
+    weeks.forEach((week, wi) => {
+        week.forEach((date, di) => {
+            const iso = date.toISOString().slice(0, 10);
+            const entry = dayMap[iso];
+            const color = cellColor(entry?.sets || 0);
+            const x = 16 + wi * (CELL + GAP);
+            const y = LABEL_H + di * (CELL + GAP);
+            const sets = entry?.sets || 0;
+            const vol = entry?.volume || 0;
+            const muscles = (entry?.muscles || []).join(', ');
+
+            svg += `<rect x = "${x}" y = "${y}" width = "${CELL}" height = "${CELL}" rx = "2"
+fill = "${color}" style="cursor:${entry ? 'pointer' : 'default'}"
+data - date="${iso}" data - sets="${sets}" data - vol="${vol}" data - muscles="${muscles}"
+onmouseenter = "calTooltip(event,'${iso}',${sets},${vol},'${muscles}')"
+onmouseleave = "hideCalTooltip()"
+onclick = "calClick('${iso}',${sets})" /> `;
+        });
+    });
+
+    svg += `</svg > `;
+
+    // Popup element
+    svg += `<div id="calPopup" style="display:none;position:absolute;background:var(--surface);border:1px solid var(--green);padding:12px 16px;font-size:11px;z-index:500;min-width:200px;pointer-events:none;letter-spacing:0.5px"></div>`;
+
+    // Legend
+    svg += `<div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:var(--muted)">
+    <span>LESS</span>
+    ${[0, 0.25, 0.5, 0.75, 1].map(t => {
+        const isLight = document.documentElement.classList.contains('light');
+        let bg;
+        if (t === 0) {
+            bg = isLight ? '#e8edf5' : '#1a2233';
+        } else if (isLight) {
+            const r = Math.round(255 + t * (0 - 255));
+            const g = Math.round(255 + t * (168 - 255));
+            const b = Math.round(255 + t * (85 - 255));
+            bg = `rgb(${r},${g},${b})`;
+        } else {
+            const r = Math.round(26 + t * (0 - 26));
+            const g = Math.round(34 + t * (255 - 34));
+            const b = Math.round(51 + t * (135 - 51));
+            bg = `rgb(${r},${g},${b})`;
+        }
+        return `<div style="width:12px;height:12px;border-radius:2px;background:${bg}"></div>`;
+    }).join('')}
+    <span>MORE</span>
+    <span style="margin-left:12px">sets per day</span>
+</div>`;
+
+    container.innerHTML = svg;
+}
+
+function calTooltip(e, iso, sets, vol, muscles) {
+    if (!sets) return;
+    const popup = document.getElementById('calPopup');
+    const d = new Date(iso);
+    const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    const volFmt = vol >= 1000 ? `${(vol / 1000).toFixed(1)}t` : `${Math.round(vol)}kg`;
+    popup.innerHTML = `
+    <div style="color:var(--green);margin-bottom:6px">${dateStr}</div>
+    <div style="color:var(--text)">${sets} sets · ${volFmt}</div>
+    ${muscles ? `<div style="color:var(--label);margin-top:4px;font-size:10px">${muscles}</div>` : ''}
+    <div style="color:var(--muted);font-size:10px;margin-top:6px">click to open workout</div>`;
+    popup.style.display = 'block';
+
+    // Temporarily show to measure width, then position
+    popup.style.left = '-9999px';
+    const popupW = popup.offsetWidth;
+    const margin = 12;
+    const wouldOverflow = e.clientX + margin + popupW > window.innerWidth;
+
+    popup.style.left = wouldOverflow
+        ? (e.pageX - popupW - margin) + 'px'
+        : (e.pageX + margin) + 'px';
+    popup.style.top = (e.pageY - 10) + 'px';
+}
+
+function hideCalTooltip() {
+    const p = document.getElementById('calPopup');
+    if (p) p.style.display = 'none';
+}
+
+function calClick(iso, sets) {
+    if (!sets) return;
+    window.location.href = `/workout/${iso}`;
+}
+
+// ── Best time / day to train ───────────────────────────────────────────────────
+function renderTiming() {
+    const isLight = document.documentElement.classList.contains('light');
+    const gridCol = isLight ? '#dde1e8' : '#1a2233';
+    const textCol = isLight ? '#4a5568' : '#8899aa';
+    const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const container = document.getElementById('timingChart');
+    if (!container) return;
+
+    const cutoff = getCutoffDate();
+    const entries = data.timing.filter(d => !cutoff || d.date >= cutoff);
+
+    if (!entries.length) {
+        container.innerHTML = '<div style="color:var(--muted);font-size:11px;padding:12px">No data</div>';
+        return;
+    }
+
+    const maxVol = Math.max(...entries.map(d => d.volume), 1);
+
+    function dotColor(vol) {
+        const t = Math.pow(vol / maxVol, 0.5);
+        if (isLight) {
+            const r = Math.round(255 + t * (0 - 255));
+            const g = Math.round(255 + t * (168 - 255));
+            const b = Math.round(255 + t * (85 - 255));
+            return `rgba(${r},${g},${b},0.85)`;
+        }
+        const r = Math.round(26 + t * (0 - 26));
+        const g = Math.round(34 + t * (255 - 34));
+        const b = Math.round(51 + t * (135 - 51));
+        return `rgba(${r},${g},${b},0.85)`;
+    }
+
+    // Averages per day
+    const dayStats = Array.from({ length: 7 }, (_, i) => {
+        const ds = entries.filter(e => e.day === i);
+        return {
+            count: ds.length,
+            avgVol: ds.length ? ds.reduce((a, b) => a + b.volume, 0) / ds.length : 0,
+            avgSets: ds.length ? ds.reduce((a, b) => a + b.sets, 0) / ds.length : 0,
+        };
+    });
+
+    // Averages per hour bucket (split into 3h slots)
+    const hourBuckets = Array.from({ length: 8 }, (_, i) => {
+        const hStart = i * 3, hEnd = hStart + 3;
+        const hs = entries.filter(e => e.hour >= hStart && e.hour < hEnd);
+        return {
+            label: `${String(hStart).padStart(2, '0')}:00`,
+            count: hs.length,
+            avgVol: hs.length ? hs.reduce((a, b) => a + b.volume, 0) / hs.length : 0,
+        };
+    });
+
+    const W = 680, H = 320;
+    const PAD_L = 48, PAD_R = 20, PAD_T = 30, PAD_B = 40;
+    const plotW = W - PAD_L - PAD_R;
+    const plotH = H - PAD_T - PAD_B;
+
+    // X = day (0-6), jitter slightly; Y = hour (0-23)
+    const dayW = plotW / 7;
+    const hourH = plotH / 24;
+
+    function xPos(day, jitter) { return PAD_L + day * dayW + dayW / 2 + jitter; }
+    function yPos(hour) { return PAD_T + hour * hourH; }
+
+    let svg = `<svg width="100%" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"
+    style="font-family:'JetBrains Mono',monospace;overflow:visible">`;
+
+    // Grid lines — hours
+    [6, 9, 12, 15, 18, 21].forEach(h => {
+        const y = yPos(h);
+        svg += `<line x1="${PAD_L}" y1="${y}" x2="${W - PAD_R}" y2="${y}"
+        stroke="${gridCol}" stroke-width="0.5" stroke-dasharray="3 3"/>`;
+        svg += `<text x="${PAD_L - 4}" y="${y + 4}" font-size="9" fill="${textCol}"
+        text-anchor="end">${String(h).padStart(2, '0')}:00</text>`;
+    });
+
+    // Day columns + labels
+    DAYS.forEach((day, i) => {
+        const x = PAD_L + i * dayW;
+        svg += `<line x1="${x + dayW / 2}" y1="${PAD_T}" x2="${x + dayW / 2}" y2="${PAD_T + plotH}"
+        stroke="${gridCol}" stroke-width="0.5"/>`;
+        // Volume bar at bottom (normalised height 20px max)
+        const barH = dayStats[i].avgVol > 0 ? Math.max(3, (dayStats[i].avgVol / maxVol) * 24) : 0;
+        svg += `<rect x="${x + dayW * 0.2}" y="${PAD_T + plotH + 6}" width="${dayW * 0.6}" height="${barH}"
+        fill="${isLight ? '#00a855' : '#00ff87'}" opacity="0.6" rx="1"/>`;
+        svg += `<text x="${x + dayW / 2}" y="${H - 4}" font-size="10" fill="${textCol}"
+        text-anchor="middle">${day}</text>`;
+        if (dayStats[i].count > 0) {
+            svg += `<text x="${x + dayW / 2}" y="${PAD_T + plotH + barH + 18}" font-size="8"
+            fill="${textCol}" text-anchor="middle">${dayStats[i].count}×</text>`;
+        }
+    });
+
+    // Y-axis labels: AM / PM zones
+    svg += `<text x="${PAD_L - 4}" y="${yPos(0) + 4}"  font-size="9" fill="${textCol}" text-anchor="end">00:00</text>`;
+    svg += `<text x="${PAD_L - 4}" y="${yPos(12) + 4}" font-size="9" fill="${textCol}" text-anchor="end">12:00</text>`;
+
+    // Zone backgrounds
+    svg += `<rect x="${PAD_L}" y="${PAD_T}" width="${plotW}" height="${hourH * 6}"
+    fill="${isLight ? 'rgba(100,150,255,0.04)' : 'rgba(100,150,255,0.04)'}"/>`;
+    svg += `<text x="${PAD_L + 4}" y="${PAD_T + 14}" font-size="8" fill="${textCol}" opacity="0.5">NIGHT</text>`;
+    svg += `<rect x="${PAD_L}" y="${PAD_T + hourH * 17}" width="${plotW}" height="${hourH * 5}"
+    fill="${isLight ? 'rgba(100,150,255,0.04)' : 'rgba(100,150,255,0.04)'}"/>`;
+    svg += `<text x="${PAD_L + 4}" y="${PAD_T + hourH * 17 + 14}" font-size="8" fill="${textCol}" opacity="0.5">EVENING</text>`;
+
+    // Dots — jitter x slightly per session on same day
+    const dayCounters = Array(7).fill(0);
+    entries.forEach(e => {
+        const jitter = (dayCounters[e.day]++ % 5 - 2) * 4;
+        const x = xPos(e.day, jitter);
+        const y = yPos(e.hour + 0.5);
+        const r = Math.max(3, Math.min(8, (e.sets / 20) * 6 + 3));
+        svg += `<circle cx="${x}" cy="${y}" r="${r}"
+        fill="${dotColor(e.volume)}" stroke="${isLight ? '#aaa' : '#333'}" stroke-width="0.5"
+        style="cursor:pointer"
+        onmouseenter="timingTooltip(event,'${e.date}',${e.day},${e.hour},${e.sets},${e.volume})"
+        onmouseleave="hideCalTooltip()"/>`;
+    });
+
+    svg += `</svg>`;
+
+    // Best day + time summary
+    const bestDay = dayStats.reduce((a, b, i) => b.avgVol > dayStats[a].avgVol ? i : a, 0);
+    const bestHour = hourBuckets.reduce((a, b, i) => b.avgVol > hourBuckets[a].avgVol ? i : a, 0);
+    svg += `<div style="display:flex;gap:32px;margin-top:12px;font-size:11px">
+    <div style="color:var(--label)">BEST DAY <span style="color:var(--green);font-size:14px;margin-left:8px">${DAYS[bestDay]}</span>
+        <span style="color:var(--muted);font-size:10px;margin-left:6px">avg ${Math.round(dayStats[bestDay].avgVol / 1000 * 10) / 10}t</span></div>
+    <div style="color:var(--label)">BEST TIME <span style="color:var(--green);font-size:14px;margin-left:8px">${hourBuckets[bestHour].label}</span>
+        <span style="color:var(--muted);font-size:10px;margin-left:6px">avg ${Math.round(hourBuckets[bestHour].avgVol / 1000 * 10) / 10}t</span></div>
+</div>`;
+
+    container.innerHTML = svg;
+}
+
+function timingTooltip(e, date, day, hour, sets, vol) {
+    const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const popup = document.getElementById('calPopup');
+    const volFmt = vol >= 1000 ? `${(vol / 1000).toFixed(1)}t` : `${Math.round(vol)}kg`;
+    popup.innerHTML = `
+    <div style="color:var(--green);margin-bottom:6px">${date}</div>
+    <div style="color:var(--text)">${DAYS[day]} · ${String(hour).padStart(2, '0')}:00</div>
+    <div style="color:var(--label);margin-top:4px">${sets} sets · ${volFmt}</div>
+    <div style="color:var(--muted);font-size:10px;margin-top:6px">click to open</div>`;
+    popup.style.display = 'block';
+    const popupW = popup.offsetWidth;
+    popup.style.left = (e.clientX + 12 + popupW > window.innerWidth)
+        ? (e.pageX - popupW - 12) + 'px'
+        : (e.pageX + 12) + 'px';
+    popup.style.top = (e.pageY - 10) + 'px';
+}
+
+// ── Muscle bars ────────────────────────────────────────────────────────────────
+function renderMuscleBarsFull() {
+    const cutoff = getCutoffDate();
+    const colors = ['#00ff87', '#4da6ff', '#ff9500', '#bf5af2', '#ff3b3b', '#32d74b', '#ffd60a', '#ff6961'];
+    const series = data.muscle_series;
+    const muscles = data.muscles;
+    const volTotals = {}, freqTotals = {};
+    muscles.forEach(m => {
+        const s = series[m];
+        const { values: vv } = filterByWindow(s.vol_dates, s.vol_values);
+        volTotals[m] = vv.reduce((a, b) => a + b, 0);
+        const fd = cutoff ? s.freq_dates.filter(d => d >= cutoff) : s.freq_dates;
+        const fds = cutoff ? (s.freq_dates_secondary || []).filter(d => d >= cutoff) : (s.freq_dates_secondary || []);
+        // Primary sessions count as 1, secondary-only sessions count as 0.5
+        freqTotals[m] = fd.length + (fds.length * 0.5);
+    });
+    const volSorted = [...muscles].filter(m => m !== 'upper_back').sort((a, b) => volTotals[b] - volTotals[a]);
+    const freqSorted = [...muscles].filter(m => m !== 'upper_back').sort((a, b) => freqTotals[b] - freqTotals[a]);
+    const maxVol = Math.max(...Object.values(volTotals), 1);
+    const maxFreq = Math.max(...Object.values(freqTotals), 1);
+    function bars(sorted, totals, max, fmt) {
+        return sorted.map((m, i) => `
+<div class="muscle-row">
+<div class="muscle-name">${m.replace(/_/g, ' ')}</div>
+<div class="muscle-bar-track"><div class="muscle-bar-fill" style="width:${(totals[m] / max * 100).toFixed(1)}%;background:${colors[i % colors.length]}"></div></div>
+<div class="muscle-val">${fmt(totals[m])}</div>
+</div>`).join('');
+    }
+    document.getElementById('muscleVol').innerHTML = bars(volSorted, volTotals, maxVol, v => v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`);
+    document.getElementById('muscleFreq').innerHTML = bars(freqSorted, freqTotals, maxFreq, v => `${v}×`);
+}
+
+// ── Body heatmap ───────────────────────────────────────────────────────────────
+// From coordinate analysis:
+//   group[0] in SVG = BACK figure (avg x ~756-787)
+//   group[1] in SVG = FRONT figure (avg x ~252-291)
+//
+// Class → muscle mapping derived from SVG coordinate analysis + visual inspection:
+// FRONT: st5=shoulders, st6=abdominals, st10=biceps, st11=chest, st12=quadriceps(adductors), st14=quadriceps, st15=calves, st1=abdominals
+// BACK:  st5=shoulders, st6=abdominals(obliques), st9=lats, st10=triceps, st12=hamstrings, st15=calves, st4=glutes, st1=lats(lower back)
+
+const FRONT_MAP = {
+    'st5': 'shoulders',
+    'st6': 'abdominals',
+    'st10': 'biceps',
+    'st11': 'chest',
+    'st-forearms': 'forearms',
+    'st14': 'quadriceps',
+    'st15': 'calves',
+};
+
+const BACK_MAP = {
+    'st-rhomboids': 'rhomboids',
+    'st5': 'shoulders',    // rear delts
+    'st6': 'traps',   // obliques
+    'st9': 'lats',
+    'st10': 'triceps',
+    'st12': 'hamstrings',
+    'st15': 'calves',
+    'st4': 'glutes',
+    'st-forearms': 'forearms',
+
+};
+
+// Non-muscle structural classes — render as dark body color
+const BODY_CLASSES = ['st0', 'st1', 'st2', 'st3', 'st7', 'st8'];
+
+// ── Shared heatmap state ────────────────────────────────────────────────────────
+const volHeatmap = { frontSvg: null, backSvg: null, map: {}, max: 1 };
+const freqHeatmap = { frontSvg: null, backSvg: null, map: {}, max: 1 };
+
+// ── Vol heatmap color functions ─────────────────────────────────────────────────
+function volHeatColor(key) {
+    const t = Math.pow((volHeatmap.map[key] || 0) / volHeatmap.max, 0.5);
+    const isLight = document.documentElement.classList.contains('light');
+    if (isLight) {
+        if (t === 0) return '#dde6f0';
+        return `rgb(${Math.round(255 + t * (0 - 255))},${Math.round(255 + t * (168 - 255))},${Math.round(255 + t * (85 - 255))})`;
+    }
+    if (t === 0) return '#1a2233';
+    return `rgb(${Math.round(26 + t * (0 - 26))},${Math.round(34 + t * (255 - 34))},${Math.round(51 + t * (135 - 51))})`;
+}
+
+function volHeatOpacity(key) {
+    return Math.max(0.2, Math.pow((volHeatmap.map[key] || 0) / volHeatmap.max, 0.5));
+}
+
+function volFmtVal(key) {
+    const v = volHeatmap.map[key] || 0;
+    return v >= 1000 ? `${(v / 1000).toFixed(1)}t` : `${Math.round(v)}kg`;
+}
+
+// ── Freq heatmap color functions ────────────────────────────────────────────────
+function freqHeatColor(key) {
+    const t = Math.pow((freqHeatmap.map[key] || 0) / freqHeatmap.max, 0.5);
+    const isLight = document.documentElement.classList.contains('light');
+    if (isLight) {
+        if (t === 0) return '#dde6f0';
+        return `rgb(${Math.round(255 + t * (26 - 255))},${Math.round(255 + t * (115 - 255))},${Math.round(255 + t * (212 - 255))})`;
+    }
+    if (t === 0) return '#1a2233';
+    return `rgb(${Math.round(26 + t * (77 - 26))},${Math.round(34 + t * (166 - 34))},${Math.round(51 + t * (255 - 51))})`;
+}
+
+function freqHeatOpacity(key) {
+    return Math.max(0.2, Math.pow((freqHeatmap.map[key] || 0) / freqHeatmap.max, 0.5));
+}
+
+function freqFmtVal(key) {
+    return `${Math.round(freqHeatmap.map[key] || 0)}×`;
+}
+
+// ── Shared applyHeat ────────────────────────────────────────────────────────────
+function applyHeat(svg, classMap, colorFn, opacityFn, fmtFn) {
+    const isLight = document.documentElement.classList.contains('light');
+    const muscleElements = {};
+
+    Object.entries(classMap).forEach(([cls, key]) => {
+        svg.querySelectorAll(`.${cls}`).forEach(el => {
+            el.style.fill = colorFn(key);
+            el.style.opacity = opacityFn(key);
+            el.style.transition = 'transform 0.15s ease, opacity 0.15s ease';
+            el.setAttribute('data-muscle', key.replace(/_/g, ' '));
+            el.setAttribute('data-vol', fmtFn(key));
+            if (!muscleElements[key]) muscleElements[key] = [];
+            muscleElements[key].push(el);
+        });
+    });
+
+    Object.entries(muscleElements).forEach(([key, els]) => {
+        function getGroupCenter() {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            els.forEach(el => {
+                try {
+                    const bb = el.getBBox();
+                    minX = Math.min(minX, bb.x); minY = Math.min(minY, bb.y);
+                    maxX = Math.max(maxX, bb.x + bb.width); maxY = Math.max(maxY, bb.y + bb.height);
+                } catch (_) { }
+            });
+            return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+        }
+        els.forEach(el => {
+            el.addEventListener('mouseenter', () => {
+                const { cx, cy } = getGroupCenter();
+                els.forEach(e => {
+                    e.style.transformOrigin = `${cx}px ${cy}px`;
+                    e.style.transform = 'scale(1.07)';
+                    e.style.opacity = '1';
+                });
+            });
+            el.addEventListener('mouseleave', () => {
+                els.forEach(e => {
+                    e.style.transform = 'scale(1)';
+                    e.style.opacity = opacityFn(key);
+                });
+            });
+        });
+    });
+
+    BODY_CLASSES.forEach(cls => {
+        svg.querySelectorAll(`.${cls}`).forEach(el => {
+            el.style.fill = isLight ? '#c8d4e0' : '#2a3548';
+            el.style.opacity = '1';
+            el.removeAttribute('data-muscle');
+        });
+    });
+    svg.querySelectorAll('path, ellipse, rect, circle').forEach(el => {
+        el.style.stroke = isLight ? '#7a8fa8' : '#000000';
+        el.style.strokeWidth = '1px';
+    });
+    svg.querySelectorAll('.st13').forEach(el => el.remove());
+}
+
+function buildHeatLegend(container, label, dataMap, colorFn, fmtFn, gradientLight, gradientDark) {
+    const isLight = document.documentElement.classList.contains('light');
+    const allMuscles = [...new Set([...Object.values(FRONT_MAP), ...Object.values(BACK_MAP)])]
+        .filter(m => m !== 'upper_back');
+    const entries = allMuscles
+        .map(m => ({ m }))
+        .sort((a, b) => (dataMap[b.m] || 0) - (dataMap[a.m] || 0));
+    container.style.cssText += 'display:flex;flex-direction:column;gap:6px;';
+    container.innerHTML = `
+    <div style="font-size:9px;letter-spacing:3px;color:var(--muted);margin-bottom:4px">${label}</div>
+    ${entries.map(({ m }) => `
+    <div style="display:flex;align-items:center;gap:8px;font-size:11px">
+        <div style="width:10px;height:10px;flex-shrink:0;background:${colorFn(m)}"></div>
+        <span style="color:var(--label)">${m.replace(/_/g, ' ')}</span>
+        <span style="color:var(--text);margin-left:auto">${fmtFn(m)}</span>
+    </div>`).join('')}
+    <div style="margin-top:8px;display:flex;align-items:center;gap:6px">
+        <div style="width:60px;height:4px;background:linear-gradient(to right,${isLight ? '#ffffff' : '#1a2233'},${isLight ? gradientLight : gradientDark})"></div>
+        <span style="font-size:9px;color:var(--muted)">LOW → HIGH</span>
+    </div>`;
+}
+
+function renderBodyHeatmap() {
+    const series = data.muscle_series;
+
+    // Build volMap keyed by raw Hevy muscle name
+    volHeatmap.map = {};
+    Object.entries(series).forEach(([muscle, s]) => {
+        const { values } = filterByWindow(s.vol_dates, s.vol_values);
+        volHeatmap.map[muscle] = values.reduce((a, b) => a + b, 0);
+    });
+
+    volHeatmap.max = Math.max(...Object.values(volHeatmap.map), 1);
+
+    function addTooltips(svg) {
+        svg.addEventListener('mousemove', e => {
+            const muscle = e.target.getAttribute('data-muscle');
+            const vol = e.target.getAttribute('data-vol');
+            if (muscle) {
+                const t = document.getElementById('muscleTooltip');
+                t.innerHTML = `<span style="color:var(--green)">${muscle}</span> · ${vol}`;
+                t.style.display = 'block';
+                t.style.left = (e.clientX + 14) + 'px';
+                t.style.top = (e.clientY - 10) + 'px';
+            } else {
+                document.getElementById('muscleTooltip').style.display = 'none';
+            }
+        });
+        svg.addEventListener('mouseleave', () => {
+            document.getElementById('muscleTooltip').style.display = 'none';
+        });
+    }
+
+    const container = document.getElementById('bodyHeatmap');
+
+    fetch('/static/muscles.svg')
+        .then(r => r.text())
+        .then(svgText => {
+            const parser = new DOMParser();
+
+            // Parse two independent copies
+            const frontDoc = parser.parseFromString(svgText, 'image/svg+xml');
+            const backDoc = parser.parseFromString(svgText, 'image/svg+xml');
+
+            const frontSvg = frontDoc.querySelector('svg');
+            const backSvg = backDoc.querySelector('svg');
+
+            // group[0] = back figure, group[1] = front figure
+            // Remove the wrong group from each copy so only the correct figure shows
+            const frontGroups = frontSvg.querySelectorAll('svg > g');
+            const backGroups = backSvg.querySelectorAll('svg > g');
+            if (frontGroups.length >= 2) frontGroups[0].remove();   // remove back from front copy
+            if (backGroups.length >= 2) backGroups[1].remove();    // remove front from back copy
+
+            // Crop viewBox to each figure's half
+            frontSvg.setAttribute('viewBox', '0 0 507 1028');
+            backSvg.setAttribute('viewBox', '508 0 507 1028');
+
+            const svgStyle = 'width:100%;max-width:190px;';
+            frontSvg.style.cssText = svgStyle;
+            backSvg.style.cssText = svgStyle;
+
+            applyHeat(frontSvg, FRONT_MAP, volHeatColor, volHeatOpacity, volFmtVal);
+            applyHeat(backSvg, BACK_MAP, volHeatColor, volHeatOpacity, volFmtVal);
+            addTooltips(frontSvg);
+            addTooltips(backSvg);
+
+            // Legend — unique muscles across both maps, sorted by volume
+            const allMuscles = [...new Set([...Object.values(FRONT_MAP), ...Object.values(BACK_MAP)])];
+            const legendEntries = allMuscles
+                .map(m => ({ m, v: volHeatmap.map[m] || 0 }))
+                .sort((a, b) => b.v - a.v);
+
+            container.innerHTML = '';
+
+            volHeatmap.frontSvg = document.adoptNode(frontSvg);
+            const frontCol = document.createElement('div');
+            frontCol.className = 'body-svg-col';
+            frontCol.innerHTML = '<span>FRONT</span>';
+            frontCol.appendChild(volHeatmap.frontSvg);
+
+            volHeatmap.backSvg = document.adoptNode(backSvg);
+            const backCol = document.createElement('div');
+            backCol.className = 'body-svg-col';
+            backCol.innerHTML = '<span>BACK</span>';
+            backCol.appendChild(volHeatmap.backSvg);
+
+            const legend = document.createElement('div');
+            legend.id = 'volLegendContainer';
+            buildHeatLegend(legend, 'VOLUME', volHeatmap.map, volHeatColor, volFmtVal, '#00a855', '#00ff87');
+            container.appendChild(frontCol);
+            container.appendChild(backCol);
+            container.appendChild(legend);
+        })
+        .catch(() => {
+            document.getElementById('bodyHeatmap').innerHTML =
+                `<div style="color:var(--muted);font-size:11px;letter-spacing:1px;padding:20px">
+        SVG not found — place Muscles.svg in static/ folder and restart Flask</div>`;
+        });
+}
+
+function renderFreqHeatmap() {
+    const series = data.muscle_series;
+    const cutoff = getCutoffDate();
+
+    // Build freqMap — count unique session dates per muscle in window
+    freqHeatmap.map = {};
+    Object.entries(series).forEach(([muscle, s]) => {
+        const fd = cutoff ? s.freq_dates.filter(d => d >= cutoff) : s.freq_dates;
+        const fds = cutoff ? (s.freq_dates_secondary || []).filter(d => d >= cutoff) : (s.freq_dates_secondary || []);
+        // Primary sessions count as 1, secondary-only sessions count as 0.5
+        freqHeatmap.map[muscle] = fd.length + (fds.length * 0.5);
+    });
+
+    freqHeatmap.max = Math.max(...Object.values(freqHeatmap.map), 1);
+
+    const isLight = document.documentElement.classList.contains('light');
+
+    function addTooltips(svg) {
+        svg.addEventListener('mousemove', e => {
+            const muscle = e.target.getAttribute('data-muscle');
+            const vol = e.target.getAttribute('data-vol');
+            if (muscle) {
+                const t = document.getElementById('muscleTooltip');
+                t.innerHTML = `<span style="color:var(--blue)">${muscle}</span> · ${vol}`;
+                t.style.display = 'block';
+                t.style.left = (e.clientX + 14) + 'px';
+                t.style.top = (e.clientY - 10) + 'px';
+            } else {
+                document.getElementById('muscleTooltip').style.display = 'none';
+            }
+        });
+        svg.addEventListener('mouseleave', () => {
+            document.getElementById('muscleTooltip').style.display = 'none';
+        });
+    }
+
+    const container = document.getElementById('freqHeatmap');
+
+    fetch('/static/muscles.svg')
+        .then(r => r.text())
+        .then(svgText => {
+            const parser = new DOMParser();
+            const frontDoc = parser.parseFromString(svgText, 'image/svg+xml');
+            const backDoc = parser.parseFromString(svgText, 'image/svg+xml');
+            const frontSvg = frontDoc.querySelector('svg');
+            const backSvg = backDoc.querySelector('svg');
+
+            const frontGroups = frontSvg.querySelectorAll('svg > g');
+            const backGroups = backSvg.querySelectorAll('svg > g');
+            if (frontGroups.length >= 2) frontGroups[0].remove();
+            if (backGroups.length >= 2) backGroups[1].remove();
+
+            frontSvg.setAttribute('viewBox', '0 0 507 1028');
+            backSvg.setAttribute('viewBox', '508 0 507 1028');
+            frontSvg.style.cssText = 'width:100%;max-width:190px;';
+            backSvg.style.cssText = 'width:100%;max-width:190px;';
+
+            applyHeat(frontSvg, FRONT_MAP, freqHeatColor, freqHeatOpacity, freqFmtVal);
+            applyHeat(backSvg, BACK_MAP, freqHeatColor, freqHeatOpacity, freqFmtVal);
+            addTooltips(frontSvg);
+            addTooltips(backSvg);
+
+            // Legend sorted by frequency
+            const allMuscles = [...new Set([...Object.values(FRONT_MAP), ...Object.values(BACK_MAP)])];
+            const legendEntries = allMuscles
+                .map(m => ({ m, v: freqHeatmap.map[m] || 0 }))
+                .sort((a, b) => b.v - a.v);
+
+            container.innerHTML = '';
+
+            freqHeatmap.frontSvg = document.adoptNode(frontSvg);
+            const frontCol = document.createElement('div');
+            frontCol.className = 'body-svg-col';
+            frontCol.innerHTML = '<span>FRONT</span>';
+            frontCol.appendChild(freqHeatmap.frontSvg);
+
+            freqHeatmap.backSvg = document.adoptNode(backSvg);
+            const backCol = document.createElement('div');
+            backCol.className = 'body-svg-col';
+            backCol.innerHTML = '<span>BACK</span>';
+            backCol.appendChild(freqHeatmap.backSvg);
+
+            const legend = document.createElement('div');
+            legend.id = 'volLegendContainer';
+            legend.className = 'heatmap-legend';
+            buildHeatLegend(legend, 'SESSIONS', freqHeatmap.map, freqHeatColor, freqFmtVal, '#1a6fd4', '#4da6ff');
+
+            container.appendChild(frontCol);
+            container.appendChild(backCol);
+            container.appendChild(legend);
+        })
+        .catch(() => {
+            container.innerHTML = `<div style="color:var(--muted);font-size:11px;padding:20px">SVG not found</div>`;
+        });
+}
+
+// ── PRs ────────────────────────────────────────────────────────────────────────
+function setPrMode(mode) {
+    prMode = mode;
+    document.querySelectorAll('#prByWt,#prByE1rm,#prByVol').forEach(b => b.classList.remove('active'));
+    document.getElementById(mode === 'weight' ? 'prByWt' : mode === 'e1rm' ? 'prByE1rm' : 'prByVol').classList.add('active');
+    renderPRs();
+}
+
+let progressMode = 'e1rm'; // 'e1rm' or 'volume'
+
+function setProgressMode(mode) {
+    progressMode = mode;
+    document.querySelectorAll('#progByE1rm,#progByVol').forEach(b => b.classList.remove('active'));
+    document.getElementById(mode === 'e1rm' ? 'progByE1rm' : 'progByVol').classList.add('active');
+    renderProgress();
+}
+
+function renderProgress() {
+    const el = document.getElementById('progressGrid');
+    if (!el) return;
+
+    const entries = data.exercises
+        .map(ex => ({
+            ex,
+            p: progressMode === 'e1rm' ? data.progress_e1rm[ex] : data.progress_vol[ex]
+        }))
+        .filter(({ p }) => p && p.current !== null && p.past !== null);
+
+    if (!entries.length) {
+        el.innerHTML = '<span style="color:var(--muted);font-size:11px">Not enough data yet</span>';
+        return;
+    }
+
+    el.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px';
+
+    const unit = progressMode === 'e1rm' ? 'KG e1RM' : 'KG vol';
+
+    el.innerHTML = entries.map(({ ex, p }) => {
+        const up = p.change > 2;
+        const flat = p.change >= 0 && p.change <= 2;
+        const color = up ? 'var(--green)' : flat ? 'var(--blue)' : 'var(--red)';
+        const arrow = up ? '↑' : flat ? '→' : '↓';
+        const sign = p.change > 0 ? '+' : '';
+        const currentFmt = progressMode === 'volume'
+            ? (p.current >= 1000 ? `${(p.current / 1000).toFixed(1)}t` : `${Math.round(p.current)}kg`)
+            : `${p.current}`;
+        const pastFmt = progressMode === 'volume'
+            ? (p.past >= 1000 ? `${(p.past / 1000).toFixed(1)}t` : `${Math.round(p.past)}kg`)
+            : `${p.past} kg`;
+        return `<a class="pr-card" href="/exercise/${encodeURIComponent(ex)}" style="text-decoration:none;color:inherit">
+<div class="pr-exercise">${ex.toUpperCase()}</div>
+<div style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--text);line-height:1">
+    ${currentFmt} <span style="font-size:16px;color:var(--muted)">${unit}</span>
+</div>
+<div style="margin-top:6px;font-size:11px;color:${color}">
+    ${arrow} ${sign}${p.change}% <span style="color:var(--muted)">vs 30d ago · was ${pastFmt}</span>
+</div>
+</a>`;
+    }).join('');
+}
+
+function renderPRs() {
+    document.getElementById('prs').innerHTML = data.prs.map(pr => {
+        const r = prMode === 'weight' ? pr.by_weight : prMode === 'e1rm' ? pr.by_e1rm : pr.by_vol;
+        const href = r.date_iso ? `/workout/${r.date_iso}` : '#';
+        const bigNumber = prMode === 'weight'
+            ? `${r.weight}<span style="font-size:16px;color:var(--muted)"> KG</span>`
+            : prMode === 'e1rm'
+                ? `${r.e1rm}<span style="font-size:16px;color:var(--muted)"> KG e1RM</span>`
+                : `${r.volume}<span style="font-size:16px;color:var(--muted)"> KG vol</span>`;
+        const detail = prMode === 'weight'
+            ? `${r.reps} reps · e1RM ${r.e1rm} kg · ${r.date}`
+            : prMode === 'e1rm'
+                ? `${r.weight} kg × ${r.reps} reps · ${r.date}`
+                : `${r.weight} kg × ${r.reps} reps · e1RM ${r.e1rm} kg · ${r.date}`;
+        return `<div class="pr-card" onclick="window.location='${href}'">
+                <div class="pr-exercise">
+                    <a href="/exercise/${encodeURIComponent(pr.exercise)}"
+                        style="color:inherit;text-decoration:none"
+                        onclick="event.stopPropagation()">
+                        ${pr.exercise.toUpperCase()}
+                    </a>
+                </div>
+                <div class="pr-weight">${bigNumber}</div>
+                <div class="pr-detail">${detail}</div>
+            </div>`;
+    }).join('');
+}
+
+// ── Predictions ────────────────────────────────────────────────────────────────
+const STATUS_BADGE = {
+    bump: ['BUMP ↑', 'badge-bump'],
+    progress: ['PROGRESS', 'badge-progress'],
+    deload: ['DELOAD ↓', 'badge-deload'],
+    returning: ['RETURN', 'badge-return'],
+};
+
+function sortPreds(key) {
+    if (predSort.key === key) predSort.dir *= -1;
+    else { predSort.key = key; predSort.dir = 1; }
+    document.querySelectorAll('th').forEach(th => th.classList.remove('sorted'));
+    const keyMap = ['exercise', 'days_since', 'last_weight', 'last_reps', null, 'best_e1rm', 'acwr', null, null];
+    const idx = keyMap.indexOf(key);
+    if (idx >= 0) document.querySelectorAll('th')[idx].classList.add('sorted');
+    renderPredictions();
+}
+
+function gridColor() {
+    return document.documentElement.classList.contains('light') ? '#dde1e8' : '#1a2233';
+}
+
+function renderPredictions() {
+    const current = data.predictions.filter(p => p.days_since <= 21);
+    const inactive = data.predictions.filter(p => p.days_since > 21);
+    const filter = p => !predQuery || p.exercise.toLowerCase().includes(predQuery);
+    const sort = arr => [...arr].sort((a, b) => {
+        const av = a[predSort.key], bv = b[predSort.key];
+        return typeof av === 'string' ? predSort.dir * av.localeCompare(bv) : predSort.dir * (av - bv);
+    });
+    const row = p => {
+        const deloadOn = document.getElementById('deloadToggle')?.checked;
+        const useDeload = deloadOn && p.deload;
+
+        const wLast = p.is_bw ? 'BW' : `${p.last_weight} kg`;
+        const wRec = useDeload
+            ? (p.is_bw ? 'BW' : `${p.deload_rec_weight} kg`)
+            : (p.is_bw ? 'BW' : `${p.rec_weight} kg`);
+        const recReps = useDeload ? p.deload_rec_reps : p.rec_reps;
+        const note = useDeload ? p.deload_note : p.note;
+        const [label, cls] = useDeload ? STATUS_BADGE['deload'] : (STATUS_BADGE[p.status] || ['—', '']);
+        const bwTag = p.is_bw ? '<span class="badge badge-bw">BW</span> ' : '';
+
+        return `<tr>
+        <td class="ex-name"><a href="/exercise/${encodeURIComponent(p.exercise)}" style="color:inherit;text-decoration:none">${bwTag}${p.exercise}</a></td>
+        <td class="days-since">${p.days_since}d ago</td>
+        <td>${wLast}</td>
+        <td>${p.last_reps}</td>
+        <td class="rec">${wRec} × ${recReps}</td>
+        <td>${p.best_e1rm > 0 ? p.best_e1rm + ' kg' : '—'}</td>
+        <td style="color:${p.acwr > 1.3 ? 'var(--red)' : p.acwr > 1.0 ? 'var(--green)' : 'var(--muted)'}">${p.acwr > 0 ? p.acwr.toFixed(2) : '—'}</td>
+        <td><span class="badge ${cls}">${label}</span></td>
+        <td style="color:var(--label);font-size:11px">${note}</td>
+    </tr>`;
+    };
+    const currentRows = sort(current.filter(filter)).map(row).join('');
+    const inactiveRows = sort(inactive.filter(filter)).map(row).join('');
+    document.getElementById('predBody').innerHTML = `
+${currentRows ? `<tr class="pred-section-header"><td colspan="8">● ACTIVE — LAST 21 DAYS</td></tr>${currentRows}` : ''}
+${inactiveRows ? `<tr class="pred-section-header"><td colspan="8">○ RETURNING / INACTIVE</td></tr>${inactiveRows}` : ''}`;
+}
+
+if (localStorage.getItem('theme') === 'light') {
+    document.documentElement.classList.add('light');
+    document.getElementById('btnTheme').textContent = '☾';
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadData();
