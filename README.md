@@ -16,10 +16,13 @@ A self-hosted dashboard for your [Hevy](https://hevy.com) workout data. Pulls yo
 - **Muscle heatmaps** — SVG body map coloured by volume and session frequency, with secondary muscle attribution
 - **Personal records** — best weight, e1RM, and single-set volume per exercise, with PR badges on workout detail pages
 - **Next session planner** — per-exercise recommendations based on your last session, with ACWR-based deload detection
+- **Strength progress panel** — e1RM and volume change vs 30 days ago across all exercises
+- **Exercise detail pages** — full progression history, charts, PRs and muscle map per exercise
 - **Workout detail pages** — full set-by-set breakdown for any session
+- **Month view** — summary and muscle heatmap for any calendar month
 - **Best time/day scatter plot** — see when your best sessions tend to happen
 - **Light / dark mode**
-- **Local caching** — data is fetched once and cached for 24 hours
+- **SQLite database** — data stored locally in `hevy.db`, incremental sync on refresh
 
 ---
 
@@ -53,9 +56,9 @@ HEVY_API_KEY=your_api_key_here
 python app.py
 ```
 
-Then open [http://localhost:5000](http://localhost:5000).
+Then open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-On first load it fetches your full workout history from the Hevy API and saves it to `cache.json`. After that it reads from the cache. Click **Refresh** in the UI to re-fetch, or just delete `cache.json` manually.
+On first load it fetches your full workout history from the Hevy API and stores it in `hevy.db`. Click **Refresh** in the UI to pull in any new workouts.
 
 ---
 
@@ -64,12 +67,16 @@ On first load it fetches your full workout history from the Hevy API and saves i
 ```
 hevy-dashboard/
 ├── app.py               # Flask backend, data processing, API endpoints
+├── hevy_db.py           # SQLite database layer, schema, insert and compute functions
+├── hevy_migrate.py      # One-time migration from cache.json to hevy.db
 ├── templates/
 │   ├── index.html       # Main dashboard
-│   └── workout.html     # Workout detail page
+│   ├── workout.html     # Workout detail page
+│   ├── exercise.html    # Exercise detail page
+│   └── month.html       # Month view page
 ├── static/
 │   └── muscles.svg      # Body map SVG for muscle heatmaps
-├── cache.json           # Auto-generated on first run (gitignored)
+├── hevy.db              # SQLite database (auto-created, gitignored)
 └── .env                 # Your API key (gitignored)
 ```
 
@@ -82,7 +89,6 @@ All the constants you'd want to tweak are at the top of `app.py`:
 | Constant | Default | Description |
 |---|---|---|
 | `TOP_N` | `8` | Number of exercises shown in charts and the PR panel |
-| `CACHE_MAX_AGE_HOURS` | `24` | Cache expiry in hours |
 | `STALE_DAYS` | `21` | Days without a session before an exercise is marked inactive |
 | `UPPER_REP_TARGET` | `12` | Rep ceiling before the weight gets bumped |
 | `WEIGHT_INCREMENT` | `2.0` | kg added on a weight bump (adjust for your equipment) |
@@ -98,14 +104,15 @@ Hevy uses `upper_back` as a catch-all, so the dashboard splits it into `traps` a
 
 ---
 
-## Caching
+## Database
 
-The Hevy API is only called when:
+All workout data is stored in `hevy.db`. On refresh, only workouts newer than the latest one in the database are fetched — so subsequent refreshes are fast regardless of how much history you have.
 
-1. There's no `cache.json` yet
-2. You click **Refresh** or the cache is older than `CACHE_MAX_AGE_HOURS`
+If you're migrating from an older version that used `cache.json`, run:
 
-Everything else runs locally.
+```bash
+python hevy_migrate.py
+```
 
 ---
 
@@ -113,7 +120,7 @@ Everything else runs locally.
 
 ```
 .env
-cache.json
+hevy.db
 __pycache__/
 *.pyc
 ```
