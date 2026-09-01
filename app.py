@@ -70,6 +70,10 @@ BASE_URL = "https://api.hevyapp.com/v1"
 PAGE_SIZE = 10
 TOP_N = 8
 
+FLASK_PORT = int(os.environ.get("FLASK_PORT", "5000"))
+FLASK_HOST = os.environ.get("FLASK_HOST", "127.0.0.1")
+FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "true").lower() in ("true", "1", "yes")
+
 STALE_DAYS = 21
 DELOAD_THRESHOLD = 0.90
 UPPER_REP_TARGET = 12
@@ -1680,5 +1684,5 @@ if __name__ == "__main__":
         print("⚡  Fetching your workout history from Hevy...")
         fetch_fresh_data()
 
-    print("⚡  Hevy Dashboard → http://localhost:5000")
-    app.run(debug=True, port=5000)
+    print(f"⚡  Hevy Dashboard → http://{FLASK_HOST}:{FLASK_PORT}")
+    app.run(debug=FLASK_DEBUG, host=FLASK_HOST, port=FLASK_PORT)

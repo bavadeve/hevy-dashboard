@@ -60,16 +60,45 @@ A self-hosted dashboard for your [Hevy](https://hevy.com) workout data. Pulls yo
 
 ## Installation
 
+Clone the repo:
+
 ```bash
 git clone https://github.com/bavadeve/hevy-dashboard.git
 cd hevy-dashboard
-pip install flask requests pandas numpy python-dotenv
 ```
+
+### Option 1: Using venv (built-in)
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### Option 2: Using uv (faster)
+
+```bash
+uv venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+uv pip install -r requirements.txt
+```
+
+### Set up your API key
 
 Create a `.env` file in the project root:
 
 ```
 HEVY_API_KEY=your_api_key_here
+```
+
+### Optional settings
+
+Add any of these to `.env` to customize behavior:
+
+```
+FLASK_PORT=5000              # Server port (default: 5000)
+FLASK_HOST=127.0.0.1         # Server host (default: 127.0.0.1, use 0.0.0.0 for network access)
+FLASK_DEBUG=true             # Debug mode (default: true, set to false for production)
 ```
 
 ---
@@ -109,7 +138,7 @@ hevy-dashboard/
 
 ## Configuration
 
-All the constants you'd want to tweak are at the top of `app.py`:
+You can adjust these constants in `app.py` if you want to fine-tune the dashboard:
 
 | Constant | Default | Description |
 |---|---|---|
