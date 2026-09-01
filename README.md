@@ -12,19 +12,41 @@ A self-hosted dashboard for your [Hevy](https://hevy.com) workout data. Pulls yo
 
 ## Features
 
-- **Training calendar** — GitHub-style heatmap of every session, hover for volume and muscles hit
-- **Volume over time** — weekly volume per exercise, filterable by 1M / 3M / 1Y
-- **Estimated 1-rep max** — e1RM over time using the Epley formula, with Gaussian smoothing
-- **Muscle heatmaps** — SVG body map coloured by volume and session frequency, with secondary muscle attribution
-- **Personal records** — best weight, e1RM, and single-set volume per exercise, with PR badges on workout detail pages
-- **Next session planner** — per-exercise recommendations based on your last session, with ACWR-based deload detection
-- **Strength progress panel** — e1RM and volume change vs 30 days ago across all exercises
-- **Exercise detail pages** — full progression history, charts, PRs and muscle map per exercise
-- **Workout detail pages** — full set-by-set breakdown for any session
-- **Month view** — summary and muscle heatmap for any calendar month
-- **Best time/day scatter plot** — see when your best sessions tend to happen
-- **Light / dark mode**
-- **SQLite database** — data stored locally in `hevy.db`, incremental sync on refresh
+### Analytics
+
+- Training calendar — GitHub-style heatmap showing every workout, hover to see volume and muscles trained
+- Volume charts — Total weekly volume by exercise, filterable by time window (1M, 3M, 1Y)
+- Strength progression — Estimated 1-rep max over time using the Epley formula
+- Strength progress — Compare your e1RM and volume against 30 days ago
+- Best time analysis — Scatter plot showing which days and times you tend to have your best sessions
+
+### Personal Records
+
+- PR tracking — Best weight, e1RM, and single-set volume for each exercise
+- PR badges — Visual indicators on workout detail pages when you hit a new PR
+
+### Training Recommendations
+
+- Next session planner — Per-exercise suggestions based on when you last trained it
+- Deload detection — Identifies high injury risk periods using ACWR (Acute to Chronic Workload Ratio)
+
+### Muscle Analysis
+
+- Muscle heatmaps — Visual body map colored by training volume and session frequency
+- Secondary muscles — Accounts for which muscles assist in each exercise
+- Splits recognition — Analyzes your training splits automatically from your history
+
+### Detailed Views
+
+- Exercise pages — Full progression history, PR records, and muscle contribution for each exercise
+- Workout pages — Complete set-by-set breakdown for any past session
+- Month view — Summary and muscle heatmap for any calendar month
+
+### Other
+
+- Dark mode — Full light/dark theme support
+- Data export — Export next session recommendations as JSON
+- Local database — All data stored offline in `hevy.db`, only syncs when you hit Refresh
 
 ---
 
@@ -60,7 +82,7 @@ python app.py
 
 Then open [http://127.0.0.1:5000](http://127.0.0.1:5000).
 
-On first load it fetches your full workout history from the Hevy API and stores it in `hevy.db`. Click **Refresh** in the UI to pull in any new workouts.
+On first run, the app automatically fetches your full workout history from the Hevy API and stores it in `hevy.db`. After that, use the Refresh button in the UI to sync any new workouts. Subsequent refreshes are fast because only new data gets pulled.
 
 ---
 
@@ -68,18 +90,19 @@ On first load it fetches your full workout history from the Hevy API and stores 
 
 ```
 hevy-dashboard/
-├── app.py               # Flask backend, data processing, API endpoints
-├── hevy_db.py           # SQLite database layer, schema, insert and compute functions
-├── hevy_migrate.py      # One-time migration from cache.json to hevy.db
+├── app.py                  # Flask backend, Hevy API integration, data processing
+├── hevy_db.py              # SQLite database layer and calculations
 ├── templates/
-│   ├── index.html       # Main dashboard
-│   ├── workout.html     # Workout detail page
-│   ├── exercise.html    # Exercise detail page
-│   └── month.html       # Month view page
+│   ├── index.html          # Main dashboard
+│   ├── workout.html        # Workout detail page
+│   ├── exercise.html       # Exercise detail page
+│   └── month.html          # Month view page
 ├── static/
-│   └── muscles.svg      # Body map SVG for muscle heatmaps
-├── hevy.db              # SQLite database (auto-created, gitignored)
-└── .env                 # Your API key (gitignored)
+│   ├── js/                 # Dashboard interactivity (Chart.js visualizations, state)
+│   ├── css/                # Styling for each page
+│   └── muscles.svg         # Body map SVG for muscle heatmaps
+├── hevy.db                 # SQLite database (auto-created on first run, gitignored)
+└── .env                    # Your API key (gitignored)
 ```
 
 ---
@@ -109,23 +132,6 @@ Hevy uses `upper_back` as a catch-all, so the dashboard splits it into `traps` a
 ## Database
 
 All workout data is stored in `hevy.db`. On refresh, only workouts newer than the latest one in the database are fetched — so subsequent refreshes are fast regardless of how much history you have.
-
-If you're migrating from an older version that used `cache.json`, run:
-
-```bash
-python hevy_migrate.py
-```
-
----
-
-## .gitignore
-
-```
-.env
-hevy.db
-__pycache__/
-*.pyc
-```
 
 ---
 
