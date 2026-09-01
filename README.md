@@ -85,11 +85,13 @@ uv pip install -r requirements.txt
 
 ### Set up your API key
 
-Create a `.env` file in the project root:
+Copy `.env.example` to `.env` and add your Hevy API key:
 
+```bash
+cp .env.example .env
 ```
-HEVY_API_KEY=your_api_key_here
-```
+
+Then edit `.env` and replace `your_api_key_here` with your actual API key from the Hevy app settings.
 
 ### Optional settings
 
@@ -131,7 +133,8 @@ hevy-dashboard/
 │   ├── css/                # Styling for each page
 │   └── muscles.svg         # Body map SVG for muscle heatmaps
 ├── hevy.db                 # SQLite database (auto-created on first run, gitignored)
-└── .env                    # Your API key (gitignored)
+├── .env                    # Your API key (gitignored, created from .env.example)
+└── .env.example            # Configuration template (copy to .env)
 ```
 
 ---
