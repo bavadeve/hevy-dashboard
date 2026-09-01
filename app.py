@@ -15,7 +15,7 @@ Caching:
     Cache also auto-expires after CACHE_MAX_AGE_HOURS hours.
 """
 
-import os, sys, math, json, time
+import os, sys, json
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
@@ -26,7 +26,6 @@ import flask
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-import re
 
 from hevy_db import (
     init_db,
@@ -72,7 +71,11 @@ TOP_N = 8
 
 FLASK_PORT = int(os.environ.get("FLASK_PORT", "5000"))
 FLASK_HOST = os.environ.get("FLASK_HOST", "127.0.0.1")
-FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "true").lower() in ("true", "1", "yes")
+FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "true").lower() in (
+    "true",
+    "1",
+    "yes",
+)
 
 STALE_DAYS = 21
 DELOAD_THRESHOLD = 0.90
@@ -350,7 +353,9 @@ def fetch_fresh_data() -> dict:
 def get_data() -> dict:
     conn = get_db()
     workouts_raw = []
-    for r in conn.execute("SELECT raw_data FROM workouts ORDER BY start_time DESC").fetchall():
+    for r in conn.execute(
+        "SELECT raw_data FROM workouts ORDER BY start_time DESC"
+    ).fetchall():
         try:
             workouts_raw.append(json.loads(r[0]))
         except json.JSONDecodeError:
@@ -358,7 +363,9 @@ def get_data() -> dict:
             continue
 
     templates_raw = {}
-    for r in conn.execute("SELECT template_id, raw_data FROM templates").fetchall():
+    for r in conn.execute(
+        "SELECT template_id, raw_data FROM templates"
+    ).fetchall():
         try:
             templates_raw[r[0]] = json.loads(r[1])
         except json.JSONDecodeError:
