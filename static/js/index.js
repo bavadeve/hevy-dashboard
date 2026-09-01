@@ -1,9 +1,15 @@
 // ── Palette ────────────────────────────────────────────────────────────────────
 const PALETTE = ['#00ff87', '#4da6ff', '#ff9500', '#ff3b3b', '#bf5af2', '#32d74b', '#ffd60a', '#ff6961'];
-Chart.defaults.color = '#4a5568';
-Chart.defaults.borderColor = '#1a2233';
 Chart.defaults.font.family = "'JetBrains Mono', monospace";
 Chart.defaults.font.size = 11;
+
+function updateChartDefaults() {
+    const isLight = document.documentElement.classList.contains('light');
+    Chart.defaults.color = isLight ? '#1a2233' : '#4a5568';
+    Chart.defaults.borderColor = isLight ? '#8890a6' : '#1a2233';
+}
+
+updateChartDefaults();
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let data = null;
@@ -164,6 +170,7 @@ function toggleTheme() {
 
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
 
+    updateChartDefaults();
     if (volChart) { volChart.destroy(); volChart = null; buildVolumeChart(); }
     if (e1rmChart) { e1rmChart.destroy(); e1rmChart = null; buildE1rmChart(); }
     if (volHeatmap.frontSvg) applyHeat(volHeatmap.frontSvg, FRONT_MAP, volHeatColor, volHeatOpacity, volFmtVal);
@@ -312,7 +319,10 @@ function buildVolumeChart() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: document.documentElement.classList.contains('light') ? '#ffffff' : '#0d1117', borderColor: gridColor(), borderWidth: 1, padding: 10,
+                    backgroundColor: document.documentElement.classList.contains('light') ? '#ffffff' : '#0d1117',
+                    titleColor: document.documentElement.classList.contains('light') ? '#000000' : '#ffffff',
+                    bodyColor: document.documentElement.classList.contains('light') ? '#000000' : '#ffffff',
+                    borderColor: gridColor(), borderWidth: 1, padding: 10,
 
                     filter: item => item.parsed.y !== null,
                     callbacks: {
@@ -428,7 +438,10 @@ function buildE1rmChart() {
             plugins: {
                 legend: { display: false },
                 tooltip: {
-                    backgroundColor: document.documentElement.classList.contains('light') ? '#ffffff' : '#0d1117', borderColor: gridColor(), borderWidth: 1, padding: 10,
+                    backgroundColor: document.documentElement.classList.contains('light') ? '#ffffff' : '#0d1117',
+                    titleColor: document.documentElement.classList.contains('light') ? '#000000' : '#ffffff',
+                    bodyColor: document.documentElement.classList.contains('light') ? '#000000' : '#ffffff',
+                    borderColor: gridColor(), borderWidth: 1, padding: 10,
                     callbacks: {
                         title: items => {
                             const ds = e1rmChart.data.datasets[items[0].datasetIndex];
