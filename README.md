@@ -2,6 +2,8 @@
 
 A self-hosted dashboard for your [Hevy](https://hevy.com) workout data. Pulls your full training history via the Hevy API and gives you charts, muscle heatmaps, PR tracking, and next-session recommendations in one place.
 
+**Note:** This is a personal project I built for my own training. It's shared as-is, and I'm not actively maintaining it or responding to issues. Feel free to fork it and adapt it to your needs though.
+
 ![Dashboard](images/frontpage.png)
 
 ![Workout detail](images/workout.png)

@@ -243,14 +243,20 @@ def fetch_new_workouts(known_ids: set) -> list[dict]:
     workouts, page = [], 1
     print("Fetching workouts", end="", flush=True)
     while True:
-        r = requests.get(
-            f"{BASE_URL}/workouts",
-            headers=headers,
-            params={"page": page, "pageSize": PAGE_SIZE},
-        )
-        if r.status_code == 404:
-            break
-        r.raise_for_status()
+        try:
+            r = requests.get(
+                f"{BASE_URL}/workouts",
+                headers=headers,
+                params={"page": page, "pageSize": PAGE_SIZE},
+                timeout=10,
+            )
+            if r.status_code == 404:
+                break
+            r.raise_for_status()
+        except requests.RequestException as e:
+            print(f"\nError fetching workouts: {e}")
+            raise
+
         batch = r.json().get("workouts", [])
         if not batch:
             break
@@ -287,8 +293,8 @@ def fetch_templates(template_ids: set) -> dict:
                     "primary": t.get("primary_muscle_group") or "",
                     "secondary": t.get("secondary_muscle_groups") or [],
                 }
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"\nWarning: Failed to fetch template {tid}: {e}")
         return tid, {"primary": "", "secondary": []}
 
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -339,18 +345,22 @@ def fetch_fresh_data() -> dict:
 
 def get_data() -> dict:
     conn = get_db()
-    workouts_raw = [
-        json.loads(r[0])
-        for r in conn.execute(
-            "SELECT raw_data FROM workouts ORDER BY start_time DESC"
-        ).fetchall()
-    ]
-    templates_raw = {
-        r[0]: json.loads(r[1])
-        for r in conn.execute(
-            "SELECT template_id, raw_data FROM templates"
-        ).fetchall()
-    }
+    workouts_raw = []
+    for r in conn.execute("SELECT raw_data FROM workouts ORDER BY start_time DESC").fetchall():
+        try:
+            workouts_raw.append(json.loads(r[0]))
+        except json.JSONDecodeError:
+            print(f"Warning: Failed to decode workout data, skipping")
+            continue
+
+    templates_raw = {}
+    for r in conn.execute("SELECT template_id, raw_data FROM templates").fetchall():
+        try:
+            templates_raw[r[0]] = json.loads(r[1])
+        except json.JSONDecodeError:
+            print(f"Warning: Failed to decode template {r[0]}, skipping")
+            continue
+
     fetched_at = conn.execute(
         "SELECT value FROM meta WHERE key = 'fetched_at'"
     ).fetchone()
@@ -1661,5 +1671,14 @@ def api_month(month_str):
 if __name__ == "__main__":
     if not API_KEY:
         sys.exit("No HEVY_API_KEY found. Add it to .env or export it.")
+
+    conn = get_db()
+    workout_count = conn.execute("SELECT COUNT(*) FROM workouts").fetchone()[0]
+    conn.close()
+
+    if workout_count == 0:
+        print("⚡  Fetching your workout history from Hevy...")
+        fetch_fresh_data()
+
     print("⚡  Hevy Dashboard → http://localhost:5000")
     app.run(debug=True, port=5000)

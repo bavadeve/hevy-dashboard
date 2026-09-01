@@ -115,6 +115,7 @@ async function loadData(endpoint = '/api/data') {
     btn.disabled = true;
     try {
         const res = await fetch(endpoint, { method: endpoint === '/api/refresh' ? 'POST' : 'GET' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         data = await res.json();
         if (data.error) throw new Error(data.error);
         initVisibility();
@@ -138,13 +139,16 @@ async function refresh() {
 async function updateCacheInfo() {
     try {
         const r = await fetch('/api/cache-info');
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const c = await r.json();
         if (c.exists) {
             const dt = new Date(c.fetched_at).toLocaleString();
             document.getElementById('cacheInfo').innerHTML =
                 `CACHE <span>${c.age_hours}h OLD</span> · ${dt}`;
         }
-    } catch (_) { }
+    } catch (e) {
+        console.warn('Failed to update cache info:', e.message);
+    }
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────────

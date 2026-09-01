@@ -16,9 +16,7 @@ DB_PATH = "hevy.db"
 # ── Config — keep in sync with app.py ─────────────────────────────────────────
 TOP_N = 8
 STALE_DAYS = 21
-DELOAD_THRESHOLD = (
-    1.3  # fixed from app.py where it was 0.90 but hardcoded as 1.3
-)
+DELOAD_THRESHOLD = 0.90
 UPPER_REP_TARGET = 12
 WEIGHT_INCREMENT = 2.0
 REP_RESET_AFTER_BUMP = 8
